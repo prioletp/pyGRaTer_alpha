@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0", "scipy>=1.14", "matplotlib>=3.9", "astropy>=6.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyGrater"
+version = "0.0.1"
+authors = [
+  { name="Philippe Priolet", email="philippeprioletm@gmail.com" },
+]
+description = "Radiative transfer code for optically thin dusty environments"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+

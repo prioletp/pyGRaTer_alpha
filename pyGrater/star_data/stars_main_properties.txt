@@ -1,0 +1,33 @@
+#Star main properties
+#
+# star : star name
+# dist : distance (pc)
+# temp : surface temperature (K)
+# radius : star radius (r_sun)
+# mass : star mass (m_sun)
+# logg : star log(g) (CGS !)
+# spt : spectral type
+# band : spectral band considered
+# apmag : apparent magnitude in this band
+# vsini : rotation velocity (km.s-1)
+# mdot : stellar mass loss (10^(-14) msun/year)
+# vw : stellar wind bulk velocity (m.s-1)
+# tcoro : stellar wind coronal temperature (K)
+# B0 : magnetic field intensity at r0 ? (T or G ???)
+# r0 : B0 corresponding radius (AU)
+# tilt : tilt angle between magnetic and rotation axis (rad)
+# per : global cycle period (year)
+#
+star	dist	temp	rad	mass	logg	spt	band	apmag	vsini	mdot	vw	tcoro	B0	r0	tilt	per
+
+gen	nan	nan	nan	nan	nan	nan	V	nan	2.0675	2	nan	1e6	1e-5	1	0	22	
+vega	7.6787	nan	nan	nan	nan	A0	V	0.03	24	nan	nan	nan	nan	nan	nan	nan
+fomal	7.7035	nan	nan	nan	nan	A4	V	1.25	91.6	nan	nan	nan	nan	nan	nan	nan
+bPic	19.440	8200	1.759	1.75	4.2	A6	V	3.86	122	1.1	nan	1.1e6	nan	nan	nan	nan
+sun	10	5778	1	1	4.43	G2	V	4.74	2.067	2	4e5	1.16e6	nan	nan	nan	nan
+eEri	3.22	5135	0.743	0.9	4.7	K2	V	3.73	nan	1	nan	1.3e6	nan	nan	nan	nan
+AUmic	9.9098	nan	nan	nan	nan	M1	V	8.627	9.68	nan	nan	nan	nan	nan	nan	nan
+A0	7.6787	nan	nan	nan	nan	A0	V	0.03	24	nan	nan	nan	nan	nan	nan	nan
+F0	18.047	nan	nan	nan	nan	F0	V	4.18	50	nan	nan	nan	nan	nan	nan	nan	
+G0	11.819	nan	nan	nan	nan	G0	V	4.42	3	nan	nan	nan	nan	nan	nan	nan
+K0	11.137	nan	nan	nan	nan	K0	V	5.88	1.1	nan	nan	nan	nan	nan	nan	nan

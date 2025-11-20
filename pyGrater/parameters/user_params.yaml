@@ -1,0 +1,7 @@
+print_information: True
+
+composition: 'aC_ACAR'  # see material_list.txt for available compositions
+
+star_name: 'BPic'
+
+data_path: None
