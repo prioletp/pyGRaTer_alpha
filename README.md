@@ -1,15 +1,14 @@
 ## Installation
 
-Install **pyGrater** using pip:
+To install, run in the top directory (containing pyproject.toml):
 
 ```bash
-pip install pyGrater
+pip install .
 ```
 
 Or install in editable (developer) mode:
 
 ```bash
-cd /path/to/pyGrater
 pip install -e .
 ```
 
