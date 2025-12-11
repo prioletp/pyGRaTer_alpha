@@ -1,19 +1,27 @@
 [build-system]
-requires = ["setuptools>=61.0", "scipy>=1.14", "matplotlib>=3.9", "astropy>=6.1"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyGrater"
 version = "0.0.1"
-authors = [
-  { name="Philippe Priolet", email="philippeprioletm@gmail.com" },
-]
-description = "Radiative transfer code for optically thin dusty environments"
+description = "Debris disk modeling and radiative transfer"
 readme = "README.md"
-requires-python = ">=3.9"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.20",
+    "scipy>=1.7",
+    "matplotlib>=3.3",
+    "astropy>=4.0",
+    "tqdm>=4.60",
+    "pyyaml>=5.0"
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=6.0", "black", "flake8", "mypy"]
+
+[project.scripts]
+pygrater-setup = "pyGrater.config.setup_cli:main"
+
+[tool.setuptools]
+packages = ["pyGrater"]

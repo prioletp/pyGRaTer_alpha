@@ -94,7 +94,7 @@ class Fluxes:
         temperatures = self._get_temperatures(sizes, self.distances_for_flux)
         
         # Calculate for each wavelength
-        for i, wave in enumerate(tqdm(self.wavelengths_for_calc, desc="Thermal flux")):
+        for i, wave in enumerate(tqdm(self.wavelengths_for_calc, desc="Thermal flux", disable=True)):
             
             #Interpolating Q_abs 
             sizes_grid, waves_grid = np.meshgrid(sizes/1e-6, [wave], indexing='ij')
@@ -131,7 +131,7 @@ class Fluxes:
         temperature_mask = temperatures <= self.Tsub
         
         # Calculate for each wavelength
-        for i, wave in enumerate(tqdm(self.wavelengths_for_calc, desc="Scattered flux")):
+        for i, wave in enumerate(tqdm(self.wavelengths_for_calc, desc="Scattered flux", disable=True)):
             
             #Interpolating Q_sca
             sizes_grid, waves_grid = np.meshgrid(sizes/1e-6, [wave], indexing='ij')

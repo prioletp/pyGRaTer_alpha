@@ -1,6 +1,8 @@
 #%%
+
 # from pyGrater import grain_temperatures
 from pyGrater import utils as utl 
+from pyGrater.config.paths import DataPathConfig
 
 from pathlib import Path
 import yaml
@@ -13,26 +15,78 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 from pprint import pformat  # already imported
 
+
 class Grain:
-    def __init__(self, redo_Q=False):
+    def __init__(self, **kwargs):
+        """
+        Initialize a Grain object with optical properties.
+        
+        Parameters
+        ----------
+        **kwargs : dict, optional
+            Additional parameters to override defaults from general.yaml:
+            
+            redo_Q : bool, optional
+                Whether to recalculate grain efficiencies (default: False)
+            composition : str, optional
+                Grain composition name (default: from general.yaml)
+
+        Attributes
+        ----------
+        grain_composition_name : str
+            Name of the grain composition
+        grain_properties : dict
+            Physical properties of the grain material (density, sublimation temperature, etc.)
+        Q_dic : dict
+            Dictionary containing Qabs, Qsca, Qpr and associated sizes/wavelengths
+        Qabs : ndarray
+            Absorption efficiency as function of size and wavelength
+        Qsca : ndarray
+            Scattering efficiency as function of size and wavelength
+        Qpr : ndarray
+            Radiation pressure efficiency as function of size and wavelength
+        Qabs_sizes : ndarray
+            Grain sizes in meters
+        Qabs_waves : ndarray
+            Wavelengths in microns
+        Tsub : float
+            Sublimation temperature in Kelvin
+        
+        Examples
+        --------
+        Create grain:
+        
+        >>> grain = Grain(composition='aC_ACAR', redo_Q=False)
+        
+        Notes
+        -----
+        The grain efficiencies are calculated using Mie theory and cached to disk.
+        Set `redo_Q=True` to force recalculation.
+        """
+        data_path = DataPathConfig.get_data_path()
+        
+        redo_Q = kwargs.get('redo_Q', False)
+        composition = kwargs.get('composition', 'aC_ACAR')
         
         print("="*60)
         print("CREATING GRAIN OBJECT")
         print("="*60)
-        self.general_params_path =  Path(__file__).parent / 'parameters' / "general.yaml"
-        print(f'General parameters file: {self.general_params_path}')  # updated
-        with open(self.general_params_path, 'r') as general_yaml_file:
-            self.general_params = yaml.load(general_yaml_file, Loader=yaml.FullLoader)
+        self.developper_params_path =  Path(__file__).parent / 'parameters' / "developper_params.yaml"
+        print(f'General parameters file: {self.developper_params_path}')  # updated
+        with open(self.developper_params_path, 'r') as dev_params_yaml_file:
+            self.dev_params = yaml.load(dev_params_yaml_file, Loader=yaml.FullLoader)
+            
+        self.general_params =  {**self.dev_params, **kwargs}
         # self._pretty_print(':', self.general_params)  # updated
 
-        self.grain_optical_properties_path = Path(__file__).parent / 'optical_properties'       
+        self.grain_optical_properties_path = data_path / 'optical_properties'       
         
-        self.grain_efficiencies_path = Path(__file__).parent / 'efficiencies'
+        self.grain_efficiencies_path = data_path / 'efficiencies'
 
-        self.grain_composition_name = self.general_params['composition']
+        self.grain_composition_name = composition
         print(f'Grain composition: {self.grain_composition_name}') 
 
-        self.grain_properties_path = Path(__file__).parent / 'parameters' / 'material_list.txt'     
+        self.grain_properties_path = data_path / 'material_list.txt'     
         self.grain_properties = utl.import_material_properties(self.grain_properties_path)[self.grain_composition_name]
         # self._pretty_print('Grain properties:', self.grain_properties)  # updated
         self.weights = [self.grain_properties['Weight_par'], self.grain_properties['Weight_per1'], self.grain_properties['Weight_per2']]
@@ -164,12 +218,97 @@ class Grain:
         cbar2.ax.tick_params(labelsize=14)
 
 class Star:
-    def __init__(self, star_name, N_waves=2000):
+    def __init__(self, **kwargs):
+        """
+        Initialize a Star object with spectral properties.
+        
+        Parameters
+        ----------
+        **kwargs : dict, optional
+            Additional parameters to override defaults from general.yaml:
+
+            star_name : str, optional
+                Name of the star (default: 'bPic')
+                            
+            N_waves : int, optional
+                Number of wavelengths for the stellar spectrum (default: 2000)
+
+        
+        Attributes
+        ----------
+        star_name : str
+            Name of the star
+        distance : float
+            Distance to star in parsecs
+        temp : float
+            Effective temperature in Kelvin
+        radius : float
+            Stellar radius in solar radii
+        mass : float
+            Stellar mass in solar masses
+        logg : float
+            Surface gravity in cgs units
+        spectral_type : str
+            Spectral type (e.g., 'A5V')
+        normband : str
+            Photometric band used for normalization (e.g., 'V')
+        apmag : float
+            Apparent magnitude in normband
+        vsini : float
+            Projected rotational velocity in m/s
+        mdot : float
+            Mass loss rate
+        vwind : float
+            Wind velocity in km/s
+        tcoro : float
+            Coronal temperature in Kelvin
+        B0 : float
+            Magnetic field strength in Gauss
+        r0 : Quantity
+            Stellar radius in meters (astropy units)
+        tilt : float
+            Stellar tilt in degrees
+        period : Quantity
+            Rotation period in seconds (astropy units)
+        waves : ndarray
+            Wavelength array in microns
+        flux : ndarray
+            Stellar flux in Janskys
+        lum : float
+            Stellar luminosity in solar luminosities
+        
+        Examples
+        --------
+        Create star object:
+        
+        >>> star = Star('bPic')
+        
+        Create star with higher wavelength resolution:
+        
+        >>> star = Star('bPic', N_waves=5000)
+        
+        Access stellar properties:
+        
+        >>> print(f"Distance: {star.distance} pc")
+        >>> print(f"Temperature: {star.temp} K")
+        >>> print(f"Luminosity: {star.lum} L_sun")
+        
+        Notes
+        -----
+        The stellar spectrum is loaded from NextGen models and normalized
+        to the specified photometric band and apparent magnitude.
+        Available stars are listed in star_data/stars_main_properties.txt
+        """
         print("="*60)
         print("CREATING STAR OBJECT")
         print("="*60)
+        star_name = kwargs.get('star_name', 'bPic')
+        N_waves = kwargs.get('N_waves', 2000)
+        data_path = DataPathConfig.get_data_path()
+        self.path_spectrum_data = str(data_path / 'star_data' / "NextGenSpectra")
+
         self.star_name = star_name
-        self.star_properties_path = Path(__file__).parent / 'star_data' / "stars_main_properties.txt"
+        self.star_properties_path = data_path / 'star_data' / "stars_main_properties.txt"
         print(f"Star properties file: {self.star_properties_path}")  # prettier path print
         self.star_properties = self.load_star_properties()
         # Pretty print loaded properties (dict-like)
@@ -242,8 +381,7 @@ class Star:
         except if norm is False'''
         band = self.normband
         Normmag = self.apmag
-        path_spectrum_data = str(Path(__file__).parent / 'star_data' / "NextGenSpectra")
-
+        path_spectrum_data = self.path_spectrum_data
         # Find the closest spectra (in temperature then log(g)), then load it
         spec = np.loadtxt(path_spectrum_data + '/NextGen.txt', 
                         skiprows=1, usecols=(0,1))
@@ -325,6 +463,77 @@ class Star:
 
 class GrainStar:
     def __init__(self, grain, star, init_thermal_distance=True, N_temp=300, redo_therm_dist=False, talk=True):
+        """
+        Initialize a GrainStar object for grain temperature calculations.
+        
+        This class computes the thermal equilibrium temperature of grains
+        as a function of their size and distance from the star.
+        
+        Parameters
+        ----------
+        grain : Grain
+            Grain object
+        star : Star
+            Star object 
+        init_thermal_distance : bool, optional
+            Whether to initialize thermal distance array (default: True)
+        N_temp : int, optional
+            Number of temperature bins (default: 300)
+        redo_therm_dist : bool, optional
+            Force recalculation of thermal distances (default: False)
+        talk : bool, optional
+            Enable verbose output (default: True)
+        
+        Attributes
+        ----------
+        grain : Grain
+            Associated grain object
+        star : Star
+            Associated star object
+        N_temp : int
+            Number of temperature points
+        therm_dist : ndarray
+            Thermal equilibrium distances as function of grain size and temperature
+            Shape: (N_sizes, N_temp)
+        temp_range : ndarray
+            Temperature array in Kelvin
+        temperatures : ndarray
+            Grain temperatures as function of size and distance (after calling get_temperature)
+        
+        Examples
+        --------
+        Create GrainStar object and compute temperatures:
+        
+        >>> grain = Grain()
+        >>> star = Star('bPic')
+        >>> gs = GrainStar(grain, star)
+        
+        Get temperatures at specific distances:
+        
+        >>> distances = np.linspace(10, 100, 50)  # AU
+        >>> temps = gs.get_temperature(distances)
+        >>> print(temps.shape)  # (N_sizes, 50)
+        
+        Force recalculation of thermal distances:
+        
+        >>> gs = GrainStar(grain, star, redo_therm_dist=True)
+        
+        Use higher temperature resolution:
+        
+        >>> gs = GrainStar(grain, star, N_temp=500)
+        
+        Plot temperature distribution:
+        
+        >>> gs.plot_temperatures(min_size=1e-7, max_size=1e-4)
+        
+        Notes
+        -----
+        The thermal distance array is cached to disk for reuse.
+        File naming: temperatures_{composition}_Tsub{Tsub}_star{starname}.npz
+        
+        The equilibrium temperature is found by balancing absorbed stellar
+        radiation with thermal emission from the grain.
+        """
         print("="*70)
         print("CREATING STAR-GRAIN OBJECT for the grain temperature calculations.")
         print("="*70)
@@ -332,7 +541,9 @@ class GrainStar:
         self.grain = grain
         self.star = star
         self.N_temp = N_temp
-        self.path_temperature_data =  Path(__file__).parent / 'temperatures'   
+        data_path = DataPathConfig.get_data_path()
+
+        self.path_temperature_data =  data_path/ 'temperatures'   
         self.name_of_array = Path(f'temperatures_{grain.grain_composition_name}_Tsub{grain.Tsub}_star{star.star_name}.npz')
         self.array_path = self.path_temperature_data / self.name_of_array
         
@@ -409,8 +620,12 @@ class GrainStar:
 
 #%%
 if __name__ == "__main__":
-    grain = Grain(redo_Q=False)
-    star = Star('bPic', N_waves=2000)
-    stargrain = GrainStar(grain, star, init_thermal_distance=True, N_temp=300, redo_therm_dist=False)
-    grain.plot_Q(max_wave=None, min_wave=None, min_size=None, max_size=None)
+    import pyGrater
+    pyGrater.set_data_path('/Users/prioletp/PhD/public_codes/pyGrater/data')
+    grain = Grain(redo_Q=False, composition='aC_ACAR')
+    star = Star('bPic')
+    # stargrain = GrainStar(grain, star, init_thermal_distance=True, N_temp=300, redo_therm_dist=False)
+    # grain.plot_Q(max_wave=None, min_wave=None, min_size=None, max_size=None)
 
+
+# %%

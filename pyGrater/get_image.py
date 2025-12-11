@@ -9,8 +9,14 @@ from scipy.interpolate import RegularGridInterpolator
 import astropy.constants as cst
 from tqdm import tqdm
 
+from pyGrater.config.logging_config import setup_logger 
+logger = setup_logger(__name__, log_to_file=True)
+
+
+
+#%%   
 class Image:
-    def __init__(self, grain, star, density_function, size_distribution_function, scattering_phase_function, wavelengths_for_calc, nx, ny, pixAU):
+    def __init__(self, grain, star, density_function, size_distribution_function, scattering_phase_function, wavelengths_for_calc, nx, ny, **kwargs):
         self.grain = grain
         self.star = star
         self.density_function = density_function
@@ -18,13 +24,21 @@ class Image:
         self.scattering_phase_function = scattering_phase_function
         self.nx = nx
         self.ny = ny
-        self.pixAU = pixAU
+        
 
         self.flux_obj = Fluxes(grain, star, wavelengths_for_calc, size_distribution_function, scattering_phase_function)
         self.wavelengths_for_calc = wavelengths_for_calc
         self.distances_for_flux = self.flux_obj.distances_for_flux
         self.scattering_angles = self.flux_obj.scattering_angles
-
+        if 'pixAU' not in kwargs and 'FOV_AU' not in kwargs:
+            logger.warning(f"Pixel size or FOV not provided, defaulting to FOV=0.5 AU")
+            self.pixAU = 0.5 
+        if 'FOV_AU' in kwargs:
+            FOV_AU = kwargs['FOV_AU']
+            self.pixAU = FOV_AU / max(nx, ny)
+        if 'pixAU' in kwargs:
+            self.pixAU = kwargs.get('pixAU')
+            
     def get_image(self, keep_separate_fluxes=False, **kwargs):
         """Optimized image computation - sequential but with optimizations."""
         nx, ny, pixAU = self.nx, self.ny, self.pixAU
@@ -116,7 +130,7 @@ class Image:
             np.clip(l[:, mask] / np.sqrt(x_prime[mask]**2 + y_prime[mask]**2 + l[:, mask]**2), -1, 1)
         )
         
-        for i, wave in enumerate(tqdm(self.wavelengths_for_calc, desc="Optimized processing")):
+        for i, wave in enumerate(tqdm(self.wavelengths_for_calc, desc="Optimized processing", disable=True)):
             # Create interpolators
             thermal_interp = scipy.interpolate.interp1d(
                 self.distances_for_flux, thermal_flux[i, :],
@@ -170,14 +184,13 @@ if __name__ == "__main__":
     from pyGrater.phase_functions import HenveyGreenstein
     
     nx, ny = 256, 256  
-    pixAU = 0.003
+    # pixAU = 0.003
     wavelengths_for_calc = np.array([1.0, 3.0])
-    
     grain = Grain(redo_Q=False)
-    star = Star('bPic')
+    star = Star(star_name = 'bPic')
     
     img_obj = Image(grain, star, two_power_law, power_law_distribution, 
-                           HenveyGreenstein, wavelengths_for_calc, nx, ny, pixAU)
+                           HenveyGreenstein, wavelengths_for_calc, nx, ny, FOV_AU= 0.5)
     
     test_params = {
         'r0': 0.09, 'h0': 0.009, 'alphain': 10., 'alphaout': -6, 

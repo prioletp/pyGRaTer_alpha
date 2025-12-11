@@ -10,6 +10,8 @@ from astropy import constants as cst
 import math as m
 import os 
 from tqdm import tqdm
+from pyGrater.config.paths import DataPathConfig
+
 # =============================================================================
 def fit_power_law(x, y):
     """Fit a power law"""
@@ -555,8 +557,8 @@ def flux_in_band(band, l_in, Fnu) :
     (called in get_spectra)
     
     NB : l_in in microns ????"""
-    
-    filters_parent_path = str(Path(__file__).parent  / 'filters')
+    data_path = DataPathConfig.get_data_path()
+    filters_parent_path = str(data_path / 'filters')
     spec = np.loadtxt(filters_parent_path + '/filters.txt', skiprows=1,    
         dtype= {'names': ('Name', 'lambda_mid', 'ZPF', 'File'),
             'formats': ('|S9', float, float, '|S16')})
@@ -982,7 +984,7 @@ def calculate_normalization_density(total_mass, sizes, distances, vertical_dista
     
     r, z = np.meshgrid(distances, vertical_distances, indexing='ij')
     densities = 2*np.pi*density_function(r, 0., z, density_params_dic)
-    print(densities.shape, distances.shape, vertical_distances.shape)
+    # print(densities.shape, distances.shape, vertical_distances.shape)
     density_integral = scipy.integrate.trapezoid(scipy.integrate.trapezoid(densities, distances, axis=0), vertical_distances, axis=0)
     normalization_density = total_mass / (sizes_integral * density_integral)
     return normalization_density

@@ -55,7 +55,7 @@ class SED:
             SED_sca = np.zeros(shape=(self.wavelengths_for_calc.size))
             SED_therm = np.zeros(shape=(self.wavelengths_for_calc.size))
         
-        print("Computing SED...")
+        # print("Computing SED...")
         
         thermal_integrand = thermal_flux[:, :, np.newaxis] * geometric_factor[np.newaxis, :, :]
         
