@@ -15,8 +15,9 @@ def two_power_law(rho, theta, z, parameter_dictionary):
 if __name__=='__main__':
     r0 = 1
     theta = np.linspace(0, 2*np.pi, 100)
-    rho = np.linspace(0.1, 10, 100)  # Changed to positive values only
-    z = np.linspace(-1,1, 100)
+    rho = np.linspace(0.1, 10, 120)  # Changed to positive values only
+    z = np.linspace(-1,1, 140)
+    r, th, z_m = np.meshgrid(rho, theta, z, indexing='ij')
     h0 = 0.1*r0
     alphain = 10.
     alphaout = -4
@@ -25,7 +26,13 @@ if __name__=='__main__':
     density_params_dic = {'r0': r0, 'h0': h0, 'alphain': alphain, 'alphaout': alphaout,'gamma': gamma, 'beta': beta}
     
     # Calculate density at z=0 as function of radius
-    density = two_power_law(rho, 0., 0., density_params_dic)
+    density = two_power_law(r, th, z_m, density_params_dic)
+
+    print('The shape is:', density.shape)
+
+    
+    #%%
+    density = two_power_law(rho, theta, z, density_params_dic)
 
     import matplotlib.pyplot as plt
     

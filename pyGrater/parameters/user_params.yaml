@@ -1,6 +1,3 @@
 print_information: True
 
-composition: 'aC_ACAR'  # see material_list.txt for available compositions
-
-star_name: 'BPic'
-
+composition: 'astroSi'  # see material_list.txt for available compositions

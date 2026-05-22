@@ -1,5 +1,5 @@
 #%%
-from pyGrater.utils import cylinder, hyperboloid_2_sheets, calculate_normalization_density
+from pyGrater.utils import cylinder, hyperboloid_2_sheets, calculate_normalization_density, calculate_normalization_density_jacobian_sublimation_fast as calculate_normalization_density_jacobian_sublimation
 from pyGrater.radiative_transfer import Fluxes
 import time
 import matplotlib.pyplot as plt
@@ -16,20 +16,45 @@ logger = setup_logger(__name__, log_to_file=True)
 
 #%%   
 class Image:
-    def __init__(self, grain, star, density_function, size_distribution_function, scattering_phase_function, wavelengths_for_calc, nx, ny, **kwargs):
+    def __init__(self, grain, star, density_function, size_distribution_function, scattering_phase_function, wavelengths_for_calc, **kwargs):
         self.grain = grain
         self.star = star
         self.density_function = density_function
         self.size_distribution_function = size_distribution_function
         self.scattering_phase_function = scattering_phase_function
-        self.nx = nx
-        self.ny = ny
-        
 
         self.flux_obj = Fluxes(grain, star, wavelengths_for_calc, size_distribution_function, scattering_phase_function)
         self.wavelengths_for_calc = wavelengths_for_calc
         self.distances_for_flux = self.flux_obj.distances_for_flux
         self.scattering_angles = self.flux_obj.scattering_angles
+        
+        N_zeta = 401  # odd so that zeta=0 is included
+        half = (N_zeta - 1) // 2
+        zeta_min = 1e-3
+        positive_zeta = np.geomspace(zeta_min, 1.0, half)
+        negative_zeta = -positive_zeta[::-1]
+        self.zeta = np.concatenate((negative_zeta, [0.0], positive_zeta))  # shape: (N_zeta,)
+    def _build_z_grid(self, kwargs):
+        """Build 2D z grid with Z_max(r) per radius using change of variables zeta=z/Z_max(r)."""
+        r     = self.distances_for_flux  # (n_r,)
+        r0    = kwargs['r0']
+        h0    = kwargs['h0']
+        beta  = kwargs['beta']
+        gamma = kwargs['gamma']
+        # Use same p as image geometry so normalization domains are consistent
+        p     = kwargs.get('p_cutoff', 0.005)
+
+        Z_max_r = self.Z0 * np.sqrt(1 + (self.distances_for_flux**2) / self.rmax**2)
+#h0 * (r / r0) ** beta * (np.log(1.0 / p)) ** (1.0 / gamma)  # (n_r,)
+        z_2d = Z_max_r[:, np.newaxis] * self.zeta[np.newaxis, :]
+        # print('Min and Max of Z_max(r):', Z_max_r.min(), Z_max_r.max())
+        # print('Min and Max of z_2d:', z_2d.min(), z_2d.max())
+        
+        return z_2d, Z_max_r      
+    def get_image(self, keep_separate_fluxes=False, **kwargs):
+        """Optimized image computation - sequential but with optimizations."""
+        nx = kwargs.get('nx', 256)
+        ny = kwargs.get('ny', 256)
         if 'pixAU' not in kwargs and 'FOV_AU' not in kwargs:
             logger.warning(f"Pixel size or FOV not provided, defaulting to FOV=0.5 AU")
             self.pixAU = 0.5 
@@ -38,24 +63,28 @@ class Image:
             self.pixAU = FOV_AU / max(nx, ny)
         if 'pixAU' in kwargs:
             self.pixAU = kwargs.get('pixAU')
-            
-    def get_image(self, keep_separate_fluxes=False, **kwargs):
-        """Optimized image computation - sequential but with optimizations."""
-        nx, ny, pixAU = self.nx, self.ny, self.pixAU
-        
+        pixAU = self.pixAU
         # Compute normalization factor once
-        total_mass = kwargs['M_tot'] * cst.M_earth.value
         thermal_flux, scattered_flux = self.flux_obj.get_fluxes(kwargs)
         
         sizes = self.flux_obj.sizes_for_integral
         distances = self.distances_for_flux
-        vertical_distances = np.geomspace(0.01, 10, 200)
-        grain_density = self.grain.grain_properties['Density'] * 10
+        # Z_max_norm_fctor = 20
+        # N_z_norm_fctor = 401  # must be odd to include 0
+        # z_min_norm = 1e-3
+        # half_norm = (N_z_norm_fctor - 1) // 2
+        # positive_Z_norm = np.geomspace(z_min_norm, Z_max_norm_fctor, half_norm)
+        # negative_Z_norm = -positive_Z_norm[::-1]
+        # vertical_distances = np.concatenate((negative_Z_norm, [0.0], positive_Z_norm))
         
-        norm_factor = calculate_normalization_density(
-            total_mass, sizes, distances, vertical_distances, grain_density,
-            self.density_function, kwargs, self.size_distribution_function, kwargs
-        )
+        # vertical_distances = np.geomspace(0.01, 10, 200)
+        grain_density = self.grain.grain_properties['Density'] * 1000
+        
+        # norm_factor = calculate_normalization_density(
+        #     total_mass, sizes, distances, vertical_distances, grain_density,
+        #     self.density_function, kwargs, self.size_distribution_function, kwargs
+        # )
+        # self.norm_factor = norm_factor
 
         if not keep_separate_fluxes:
             images = np.zeros(shape=(self.wavelengths_for_calc.size, nx, ny))
@@ -81,12 +110,13 @@ class Image:
         
         p = 0.005
         rmax = r0 * p**(1/alphaout)
+        self.rmax = rmax
         gamma_in = alphain + beta
         gamma_out = alphaout + beta
         r_peak = (-gamma_in/gamma_out)**(1/(2*gamma_in - 2*gamma_out)) * r0
         z_peak = (h0*(r_peak/r0)**beta) * (np.log(1/p)**(1/gamma))
         Z0 = z_peak/np.sqrt(r_peak**2/rmax**2 + 1)
-        
+        self.Z0 = Z0
         itilt_rad, omega_rad, PA_rad = np.radians([itilt, omega, PA])
         csPA, ssPA = np.cos(PA_rad), np.sin(PA_rad)
         csi, ssi = np.cos(itilt_rad), np.sin(itilt_rad)
@@ -105,7 +135,6 @@ class Image:
         AxisC = np.array([rmax, rmax, np.sqrt(2)*Z0])
         AxisH = np.array([rmax, rmax, Z0])
         FARAWAY = -rmax * 10.
-        
         lmc, lpc = cylinder(AxisC, vD, rD0, FARAWAY, csi)
         lmh, lph = hyperboloid_2_sheets(AxisH, vD, rD0, FARAWAY, AxisC[0], AxisC[1])
         lbounds = np.sort([lmc, lmh, lph, lpc], axis=0)
@@ -114,18 +143,70 @@ class Image:
         lmax = lbounds[3]
         dl = lmax - lmin
         mask = (dl != 0)
-        
+        # rho_proj = np.sqrt(
+        #     (rD0[0] + 0.5 * dl * vD[0])**2 +
+        #     (rD0[1] + 0.5 * dl * vD[1])**2
+        # )  # (nx, ny)
+        # # Z_max per pixel: same formula as SED
+        # Z_max_pixel = h0 * (np.maximum(rho_proj, 1e-10) / r0)**beta * (np.log(1.0 / p))**(1.0 / gamma)
+        # # Override lmin/lmax to ±Z_max(r) projected along LOS direction
+        # # Along the LOS, z = rD0[2] + l*vD[2]; at midplane z=0: l_mid = -rD0[2]/vD[2]
+        # # For itilt=0, vD[2]=1, rD0[2]=-x*ssi=0, so lmin=-Z_max, lmax=+Z_max
+        # # For general tilt, the half-length along LOS that spans ±Z_max in z:
+        # # |vD[2]| * half_l = Z_max  =>  half_l = Z_max / |vD[2]| (if vD[2] != 0)
+        # vD2_safe = np.where(np.abs(vD[2]) > 1e-10, np.abs(vD[2]), 1.0)
+        # half_l_zmax = Z_max_pixel / vD2_safe  # (nx, ny)
+        # # midpoint along original LOS
+        # l_mid = 0.5 * (lmin + lmax)
+        # # new bounds centered on midpoint, spanning ±Z_max in z
+        # lmin_new = np.where(mask, l_mid - half_l_zmax, lmin)
+        # lmax_new = np.where(mask, l_mid + half_l_zmax, lmax)
+        # dl_new   = lmax_new - lmin_new
+        # keep original mask (pixels inside cylinder)
+        # -----------------------------------------------------------
+
+        # nl = 401
+        # half_nl = (nl - 1) // 2
+        # ln_eps  = 5e-4
+        # pos_half = np.geomspace(ln_eps, 0.5, half_nl)
+        # neg_half = -pos_half[::-1]
+        # ln_sym   = np.concatenate((neg_half, [0.0], pos_half))
+        # ln       = ln_sym + 0.5                         # (nl,) in [0, 1], dense near 0.5
+        # ln       = np.clip(np.sort(ln), 0.0, 1.0)
+
+        # l  = np.tensordot(ln, dl_new, axes=0) + lmin_new   # (nl, nx, ny)
+
         nl = 49
         ln = np.arange(nl)/(nl-1.)
         l = np.tensordot(ln, dl, axes=0) + lmin
-        
+        # print('Min and Max of l:', l.min(), l.max())
+        # print('l is: ', l)
         xD = rD0[0][np.newaxis, :, :] + l[:, :, :] * vD[0]
         yD = rD0[1][np.newaxis, :, :] + l[:, :, :] * vD[1]
         zD = rD0[2][np.newaxis, :, :] + l[:, :, :] * vD[2]
         
         rhoD2 = xD**2 + yD**2
         rhoD = np.sqrt(rhoD2)
-        
+        r_mask   = distances <= rmax
+        distances_clipped = distances[r_mask]
+
+        # Build variable z grid (only over clipped radii)
+        z_2d, Z_max_r = self._build_z_grid(kwargs)
+        z_2d_clipped        = z_2d[r_mask]
+        Z_max_r_clipped     = Z_max_r[r_mask]
+        if 'M_tot' in kwargs:
+            total_mass = kwargs['M_tot'] * cst.M_earth.value
+            norm_factor = calculate_normalization_density_jacobian_sublimation(self.flux_obj.stargrain_obj,
+                total_mass, sizes, distances_clipped, z_2d_clipped, Z_max_r_clipped, self.zeta,
+                grain_density, self.density_function, kwargs,
+                self.size_distribution_function, kwargs
+            )
+        else:
+            norm_factor = kwargs['A_norm']
+        self.norm_factor = norm_factor
+
+        # print('The norm factor is:', norm_factor)
+        rho_S = np.sqrt(xD**2 + yD**2 + zD**2)
         scattering_angle = np.pi - np.arccos(
             np.clip(l[:, mask] / np.sqrt(x_prime[mask]**2 + y_prime[mask]**2 + l[:, mask]**2), -1, 1)
         )
@@ -142,36 +223,39 @@ class Image:
             )
             
             rho_flat = rhoD[:, mask].ravel()
+            rhoS_flat = rho_S[:, mask].ravel()
+
             angle_flat = scattering_angle.ravel()
-            interp_points = np.column_stack([rho_flat, angle_flat])
+            interp_points = np.column_stack([rhoS_flat, angle_flat])
             
             scattered_values = scattered_interp(interp_points)
             scattered_emissivity = scattered_values.reshape(rhoD[:, mask].shape)
             
             density_vals = self.density_function(rhoD[:, mask], 0., zD[:, mask], kwargs)
-            thermal_vals = thermal_interp(rhoD[:, mask])
+            thermal_vals = thermal_interp(rho_S[:, mask])
             
             if not keep_separate_fluxes:
                 limage = (scattered_emissivity + thermal_vals) * density_vals
                 image = np.zeros([nx, ny])
-                image[mask] = np.trapezoid(limage, x=ln, axis=0) * dl[mask] * pixAU**2
+                image[mask] = np.trapz(limage, x=ln, axis=0) * dl[mask] * pixAU**2
                 image = np.flip(image.T, axis=0) * norm_factor
                 images[i, :, :] = image
             else:
                 # Scattered component
                 limage_sca = scattered_emissivity * density_vals
                 image_sca = np.zeros([nx, ny])
-                image_sca[mask] = np.trapezoid(limage_sca, x=ln, axis=0) * dl[mask] * pixAU**2
+                image_sca[mask] = np.trapz(limage_sca, x=ln, axis=0) * dl[mask] * pixAU**2
                 image_sca = np.flip(image_sca.T, axis=0) * norm_factor
                 images_sca[i, :, :] = image_sca
                 
                 # Thermal component
                 limage_therm = thermal_vals * density_vals
                 image_therm = np.zeros([nx, ny])
-                image_therm[mask] = np.trapezoid(limage_therm, x=ln, axis=0) * dl[mask] * pixAU**2
+                image_therm[mask] = np.trapz(limage_therm, x=ln, axis=0) * dl[mask] * pixAU**2
                 image_therm = np.flip(image_therm.T, axis=0) * norm_factor
                 images_therm[i, :, :] = image_therm
-        
+            
+    
         if keep_separate_fluxes:
             return images_sca, images_therm
         else:
@@ -190,13 +274,13 @@ if __name__ == "__main__":
     star = Star(star_name = 'bPic')
     
     img_obj = Image(grain, star, two_power_law, power_law_distribution, 
-                           HenveyGreenstein, wavelengths_for_calc, nx, ny, FOV_AU= 0.5)
+                           HenveyGreenstein, wavelengths_for_calc)
     
     test_params = {
         'r0': 0.09, 'h0': 0.009, 'alphain': 10., 'alphaout': -6, 
         'gamma': 2., 'beta': 2, 'itilt': 45., 'PA': 90., 'omega': 45.,
         'a_min': 0.01e-6, 'a_max': 1000e-6, 'kappa': 6, 
-        'N_sizes_integral': 200, 'g': 0.5, 'M_tot': 2.5e-10
+        'N_sizes_integral': 200, 'g': 0.5, 'M_tot': 2.5e-10, 'FOV_AU': 0.5, 'nx': nx, 'ny': ny
     }
     
     start_time = time.time()

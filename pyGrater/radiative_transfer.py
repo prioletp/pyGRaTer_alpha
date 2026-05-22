@@ -13,7 +13,7 @@ import time
 from tqdm import tqdm
 
 class Fluxes:
-    def __init__(self, grain, star, wavelengths_for_calc, size_distribution_function, scattering_phase_function, N_temp=600, N_distances=400, dist_max_input=50, N_scattering_angles=500):
+    def __init__(self, grain, star, wavelengths_for_calc, size_distribution_function, scattering_phase_function, N_temp=600, N_distances=400, dist_max_input=1000, N_scattering_angles=500):
         
         # Same initialization as original Fluxes class
         self.Qabs = grain.Qabs
@@ -22,35 +22,39 @@ class Fluxes:
         self.Q_waves = grain.Qabs_waves
         
         self.stargrain_obj = stgr.GrainStar(grain, star, N_temp=N_temp)
+        self.stellar_spectrum_wavelengths = star.waves
+        self.stellar_spectrum_fluxes = star.flux
+        
         self.Tsub = grain.Tsub
-        # print('The maximum distance for the temperature calculation is:', np.max(self.stargrain_obj.therm_dist), 'a.u')
         
-        self.distance_observer_star = star.distance*cst.pc.value
+        self.distance_observer_star = star.distance*cst.pc.value #In meters
         
-        # Setup distances grid
+        # Setup logarithmic distances grid
         dist_max = np.min([dist_max_input, np.max(self.stargrain_obj.therm_dist)])
         self.distances_for_flux = np.geomspace(np.min(self.stargrain_obj.therm_dist), dist_max, N_distances)
         
-        # Pre-calculate temperatures
+        # Get the grain temperatures T(size, distance) on the grid of sizes and distances used for flux calculations 
         self.temperatures = self.stargrain_obj.get_temperature(self.distances_for_flux)
-        
+        print('The shape of temperatures is:', self.temperatures.shape)
+        print('The shape of distances_for_flux is:', self.distances_for_flux.shape)
+        print('The shape of Q_sizes is:', self.Q_sizes.shape)
+        print('The shape of Q_waves is:', self.Q_waves.shape)
         # Setup interpolators
         self.temperature_interpolator = RegularGridInterpolator((self.Q_sizes, self.distances_for_flux), self.temperatures)
         self.Qabs_interpolator = RegularGridInterpolator((self.Q_sizes, self.Q_waves), self.Qabs)
         self.Qsca_interpolator = RegularGridInterpolator((self.Q_sizes, self.Q_waves), self.Qsca)
-        
+        self.stellar_spectrum_interpolator = scipy.interpolate.interp1d(self.stellar_spectrum_wavelengths, 
+                                                                self.stellar_spectrum_fluxes, 
+                                                                kind='linear', bounds_error=False, fill_value=0)
         self.wavelengths_for_calc = wavelengths_for_calc
         self.size_distribution_function = size_distribution_function
         
         self.scattering_phase_function = scattering_phase_function
         self.N_scattering_angles = N_scattering_angles
         self.scattering_angles = np.linspace(0, np.pi, N_scattering_angles)
-        self.stellar_spectrum_wavelengths = star.waves
-        self.stellar_spectrum_fluxes = star.flux
         
-        self.stellar_spectrum_interpolator = scipy.interpolate.interp1d(self.stellar_spectrum_wavelengths, 
-                                                                      self.stellar_spectrum_fluxes, 
-                                                                      kind='linear', bounds_error=False, fill_value=0)
+
+
         # Cache for temperature calculations
         self._temp_cache = {}
         
@@ -77,7 +81,54 @@ class Fluxes:
         clight = 29979245800  # cm/s
         Cbb = waves * waves / clight * 1.e15
         return bb * Cbb
+    # def Planck(self, waves, T):
+    #     h = 6.6261e-27  # erg*s
+    #     c = 2.99792458e10  # cm/s
+    #     k = 1.3807e-16  # erg/K
+    #     lam_cm = waves*1e-4
+    #     c1 = 2*h*c  # erg/s*cm^2/sr
+    #     c2 = h*c/k     # cm * K
+    #     x = c2/(lam_cm*T)
+    #     bb  = (c1/(lam_cm**3)) / (np.exp(x) - 1) #IN erg·s−1·sr−1·cm−2·Hz−1
+    #     bb_Jy = bb * 1e23  # convert to Jy/sr
+    #     return bb_Jy
+    # def Planck(self, waves, T):
+    #     """
+    #     Planck function B_nu in Jy/sr
 
+    #     Parameters
+    #     ----------
+    #     waves : array
+    #         Wavelengths in microns
+    #     T : float or array
+    #         Temperature in Kelvin
+
+    #     Returns
+    #     -------
+    #     B_nu : array
+    #         Spectral radiance in Jy/sr
+    #     """
+    #     import numpy as np
+
+    #     # --- constants (CGS) ---
+    #     h = 6.62607015e-27      # erg*s
+    #     c = 2.99792458e10       # cm/s
+    #     k = 1.380649e-16        # erg/K
+
+    #     # --- convert wavelength to cm ---
+    #     lam = waves * 1e-4  # microns → cm
+
+    #     # --- convert to frequency ---
+    #     nu = c / lam
+
+    #     # --- Planck function B_nu (CGS) ---
+    #     expo = np.exp(h * nu / (k * T)) - 1.0
+    #     B_nu = (2 * h * nu**3) / (c**2 * expo)
+
+    #     # --- convert to Jy/sr ---
+    #     B_nu_Jy = B_nu / 1e-23
+
+    #     return B_nu_Jy
     def thermal_flux(self, size_distribution_args):
         """Vectorized thermal flux calculation"""
         # Setup size distribution
@@ -139,7 +190,7 @@ class Fluxes:
             
             
             factor = (self.stellar_spectrum_interpolator(wave) /
-                            (4*np.pi*(self.distances_for_flux*cst.au.value)**2))
+                            ((self.distances_for_flux*cst.au.value)**2))
             
             # Quantity to integrate
             integrand = ((np.pi * sizes[:, np.newaxis]**2) * 

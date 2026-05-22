@@ -99,7 +99,7 @@ def transform_image_to_visibilities(image, u, v, wavelength, pixAU_mas, **kwargs
     # Compute squared visibilities
     vis2 = visibilities**2
 
-    return vis2
+    return visibilities
 
 
 # %%

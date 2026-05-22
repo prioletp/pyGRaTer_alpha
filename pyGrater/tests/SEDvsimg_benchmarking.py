@@ -20,16 +20,16 @@ import os
 from pyGrater.stargrains import Grain, Star
 from pyGrater.density import two_power_law
 from pyGrater.size_distributions import power_law_distribution
-from pyGrater.phase_functions import HenveyGreenstein
-from pyGrater.get_image import Image
-from pyGrater.SED import SED
-FOV_AU = 1
+from pyGrater.phase_functions import isotropic as phase_function
+from pyGrater.get_image_better_int_mine import Image
+from pyGrater.SED_better_integration_benchmark import SED
+# FOV_AU = 1
 def get_memory_usage():
     """Get current memory usage in MB."""
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / 1024**2
 
-def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs=3):
+def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, FOV_AU=1, n_runs=3):
     """
     Compare SED and image generation with flux consistency check.
     
@@ -49,6 +49,7 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
     dict
         Comparison results
     """
+    # FOV_AU = max(nx, ny) * pixAU
     if wavelengths is None:
         wavelengths = np.array([2.0, 2.5, 3.0, 3.5, 4.0])
     else:
@@ -59,7 +60,7 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
     print("="*70)
     print(f"Wavelengths: {wavelengths} µm")
     print(f"Image size: {nx}x{ny}")
-    print(f"Pixel scale: {pixAU} AU")
+    print(f"Field of view: {FOV_AU} AU")
     print(f"Number of runs: {n_runs}")
     print()
     
@@ -68,10 +69,10 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
     star = Star(star_name='bPic')
     
     test_params = {
-        'r0': 0.09, 'h0': 0.009, 'alphain': 10., 'alphaout': -6,
-        'gamma': 2., 'beta': 2, 'itilt': 45., 'PA': 90., 'omega': 45.,
-        'a_min': 0.01e-6, 'a_max': 1000e-6, 'kappa': 6,
-        'N_sizes_integral': 200, 'g': 0.5, 'M_tot': 2.5e-10
+        'r0': 200, 'h0': 10, 'alphain': 10., 'alphaout': -6,
+        'gamma': 2., 'beta': 2, 'itilt': 0., 'PA': 45., 'omega': 45.,
+        'a_min': 10e-6, 'a_max': 1000e-6, 'kappa': 3.5,
+        'N_sizes_integral': 200, 'g': 0.5, 'M_tot': 2.5e-10, 'FOV_AU': FOV_AU, 'nx': nx, 'ny': ny
     }
     
     # Benchmark SED generation
@@ -88,7 +89,7 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
         
         # SED.get_SED returns (thermal, scattered) when keep_separate_fluxes=True
         sed_therm, sed_sca = sed_gen.get_SED(keep_separate_fluxes=True, **test_params)
-        
+
         elapsed = time.time() - start
         mem_used = get_memory_usage() - mem_start
         
@@ -110,8 +111,7 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
     print("-" * 70)
     
     img_gen = Image(grain, star, two_power_law, power_law_distribution,
-                    HenveyGreenstein, wavelengths, nx, ny, FOV_AU=FOV_AU)
-    
+                    phase_function, wavelengths)
     times_img = []
     mem_img = []
     image_fluxes_sca = []
@@ -120,11 +120,13 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
     for run in range(n_runs):
         mem_start = get_memory_usage()
         start = time.time()
-        
+        pixAU = FOV_AU / max(nx, ny)
+        pixel_area_AU2 = 1 #pixAU**2
         images_sca, images_therm = img_gen.get_image(
             keep_separate_fluxes=True, **test_params
         )
-        
+        print('RMAX:', img_gen.rmax)
+
         elapsed = time.time() - start
         mem_used = get_memory_usage() - mem_start
         
@@ -132,8 +134,8 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
         mem_img.append(mem_used)
         
         # Calculate total flux from images (sum over all pixels)
-        flux_sca = np.array([np.sum(images_sca[i]) for i in range(len(wavelengths))])
-        flux_therm = np.array([np.sum(images_therm[i]) for i in range(len(wavelengths))])
+        flux_sca = np.array([np.sum(images_sca[i])*pixel_area_AU2 for i in range(len(wavelengths))])
+        flux_therm = np.array([np.sum(images_therm[i])*pixel_area_AU2 for i in range(len(wavelengths))])
         image_fluxes_sca.append(flux_sca)
         image_fluxes_therm.append(flux_therm)
         
@@ -166,6 +168,7 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
     
     # Flux comparison
     print("="*70)
+    
     print("FLUX CONSISTENCY CHECK")
     print("="*70)
     
@@ -173,7 +176,12 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
     sed_total = sed_therm + sed_sca
     flux_ratio = avg_flux_total_img / sed_total
     flux_diff_percent = (avg_flux_total_img - sed_total) / sed_total * 100
-    
+
+    # Normalization constants
+    sed_norm_factor = float(np.nanmean(np.asarray(getattr(sed_gen, 'norm_factor', np.nan), dtype=float)))
+    image_norm_factor = float(getattr(img_gen, 'norm_factor'))
+    norm_factor_ratio = image_norm_factor / sed_norm_factor if np.isfinite(sed_norm_factor) and sed_norm_factor != 0 else np.nan
+
     for i, wave in enumerate(wavelengths):
         print(f"λ = {wave:.2f} µm:")
         print(f"  SED flux:   {sed_total[i]:.3e}")
@@ -206,12 +214,17 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, pixAU=0.003, n_runs
             'flux_ratio': flux_ratio,
             'flux_diff_percent': flux_diff_percent
         },
+        'normalization': {
+            'sed_norm_factor': sed_norm_factor,
+            'image_norm_factor': image_norm_factor,
+            'ratio_image_to_sed': norm_factor_ratio
+        },
         'params': test_params,
-        'config': {'nx': nx, 'ny': ny, 'pixAU': pixAU},
+        'config': {'nx': nx, 'ny': ny, 'FOV_AU': FOV_AU},
         'functions': {
             'density': two_power_law.__name__,
             'size_dist': power_law_distribution.__name__,
-            'phase': HenveyGreenstein.__name__
+            'phase': phase_function.__name__
         }
     }
 
@@ -219,12 +232,13 @@ def plot_comparison(results):
     """Create comprehensive comparison plots."""
     
     wavelengths = results['wavelengths']
+    mid_idx = len(wavelengths) // 2
     
-    fig = plt.figure(figsize=(20, 14))
-    gs = GridSpec(4, 3, figure=fig, hspace=0.35, wspace=0.3)
+    fig = plt.figure(figsize=(18, 12))
+    gs = GridSpec(4, 4, figure=fig, hspace=0.4, wspace=0.35)
     
-    # Row 1: Flux comparison
-    ax1 = fig.add_subplot(gs[0, :])
+    # Row 1: Flux comparison (scattered, thermal, total)
+    ax1 = fig.add_subplot(gs[0, :3])
     ax1.plot(wavelengths, results['sed']['flux_total'], 'o-', linewidth=2, 
             markersize=8, label='SED Total', color='blue')
     ax1.plot(wavelengths, results['image']['flux_total'], 's--', linewidth=2,
@@ -236,16 +250,16 @@ def plot_comparison(results):
     ax1.grid(True, alpha=0.3)
     ax1.set_yscale('log')
     
-    # Row 2: Scattered vs Thermal
+    # Row 2: Scattered vs Thermal vs Total with image
     ax2 = fig.add_subplot(gs[1, 0])
     ax2.plot(wavelengths, results['sed']['flux_scattered'], 'o-', 
             label='SED Scattered', color='blue')
     ax2.plot(wavelengths, results['image']['flux_scattered'], 's--',
             label='Image Scattered', color='red')
-    ax2.set_xlabel('Wavelength [µm]', fontsize=12)
-    ax2.set_ylabel('Scattered Flux', fontsize=12)
-    ax2.set_title('Scattered Light Comparison', fontsize=13, fontweight='bold')
-    ax2.legend(fontsize=10)
+    ax2.set_xlabel('Wavelength [µm]', fontsize=11)
+    ax2.set_ylabel('Scattered Flux', fontsize=11)
+    ax2.set_title('Scattered Light', fontsize=12, fontweight='bold')
+    ax2.legend(fontsize=9)
     ax2.grid(True, alpha=0.3)
     ax2.set_yscale('log')
     
@@ -254,46 +268,66 @@ def plot_comparison(results):
             label='SED Thermal', color='blue')
     ax3.plot(wavelengths, results['image']['flux_thermal'], 's--',
             label='Image Thermal', color='red')
-    ax3.set_xlabel('Wavelength [µm]', fontsize=12)
-    ax3.set_ylabel('Thermal Flux', fontsize=12)
-    ax3.set_title('Thermal Emission Comparison', fontsize=13, fontweight='bold')
-    ax3.legend(fontsize=10)
+    ax3.set_xlabel('Wavelength [µm]', fontsize=11)
+    ax3.set_ylabel('Thermal Flux', fontsize=11)
+    ax3.set_title('Thermal Emission', fontsize=12, fontweight='bold')
+    ax3.legend(fontsize=9)
     ax3.grid(True, alpha=0.3)
     ax3.set_yscale('log')
     
     ax4 = fig.add_subplot(gs[1, 2])
-    ax4.plot(wavelengths, results['comparison']['flux_ratio'], 'o-', 
-            linewidth=2, markersize=8, color='green')
-    ax4.axhline(y=1.0, color='k', linestyle='--', alpha=0.5)
-    ax4.set_xlabel('Wavelength [µm]', fontsize=12)
-    ax4.set_ylabel('Image Flux / SED Flux', fontsize=12)
-    ax4.set_title('Flux Ratio', fontsize=13, fontweight='bold')
+    ax4.plot(wavelengths, results['sed']['flux_total'], 'o-', 
+            label='SED Total', color='blue')
+    ax4.plot(wavelengths, results['image']['flux_total'], 's--',
+            label='Image Total', color='red')
+    ax4.set_xlabel('Wavelength [µm]', fontsize=11)
+    ax4.set_ylabel('Total Flux', fontsize=11)
+    ax4.set_title('Total Flux', fontsize=12, fontweight='bold')
+    ax4.legend(fontsize=9)
     ax4.grid(True, alpha=0.3)
+    ax4.set_yscale('log')
     
-    # Row 3: Sample images (first and last wavelength)
-    idx_first, idx_last = 0, len(wavelengths) - 1
+    # Image at mid-wavelength
+    ax_img = fig.add_subplot(gs[1, 3])
+    total_mid = results['image']['images_sca'][mid_idx] + results['image']['images_therm'][mid_idx]
+    im_mid = ax_img.imshow(total_mid, cmap='inferno', origin='lower')
+    ax_img.set_title(f'Total Image\n@ {wavelengths[mid_idx]:.2f} µm', fontsize=11, fontweight='bold')
+    plt.colorbar(im_mid, ax=ax_img, shrink=0.8)
     
+    # Row 3: Flux ratios below fluxes
     ax5 = fig.add_subplot(gs[2, 0])
-    im5 = ax5.imshow(results['image']['images_sca'][idx_first], cmap='inferno', origin='lower')
-    ax5.set_title(f'Scattered @ {wavelengths[idx_first]:.2f} µm', fontsize=12, fontweight='bold')
-    plt.colorbar(im5, ax=ax5, shrink=0.8)
+    flux_ratio_sca = results['image']['flux_scattered'] / results['sed']['flux_scattered']
+    ax5.plot(wavelengths, flux_ratio_sca*100, 'o-', 
+            linewidth=2, markersize=7, color='purple')
+    ax5.axhline(y=100.0, color='k', linestyle='--', alpha=0.5)
+    ax5.set_xlabel('Wavelength [µm]', fontsize=11)
+    ax5.set_ylabel('Ratio [%]', fontsize=11)
+    ax5.set_title('Scattered Flux Ratio', fontsize=12, fontweight='bold')
+    ax5.grid(True, alpha=0.3)
     
     ax6 = fig.add_subplot(gs[2, 1])
-    im6 = ax6.imshow(results['image']['images_therm'][idx_first], cmap='inferno', origin='lower')
-    ax6.set_title(f'Thermal @ {wavelengths[idx_first]:.2f} µm', fontsize=12, fontweight='bold')
-    plt.colorbar(im6, ax=ax6, shrink=0.8)
+    flux_ratio_therm = results['image']['flux_thermal'] / results['sed']['flux_thermal']
+    ax6.plot(wavelengths, flux_ratio_therm*100, 'o-',
+            linewidth=2, markersize=7, color='orange')
+    ax6.axhline(y=100.0, color='k', linestyle='--', alpha=0.5)
+    ax6.set_xlabel('Wavelength [µm]', fontsize=11)
+    ax6.set_ylabel('Ratio [%]', fontsize=11)
+    ax6.set_title('Thermal Flux Ratio', fontsize=12, fontweight='bold')
+    ax6.grid(True, alpha=0.3)
     
     ax7 = fig.add_subplot(gs[2, 2])
-    total_first = results['image']['images_sca'][idx_first] + results['image']['images_therm'][idx_first]
-    im7 = ax7.imshow(total_first, cmap='inferno', origin='lower')
-    ax7.set_title(f'Total @ {wavelengths[idx_first]:.2f} µm', fontsize=12, fontweight='bold')
-    plt.colorbar(im7, ax=ax7, shrink=0.8)
+    ax7.plot(wavelengths, results['comparison']['flux_ratio']*100, 'o-', 
+            linewidth=2, markersize=7, color='green')
+    ax7.axhline(y=100.0, color='k', linestyle='--', alpha=0.5)
+    ax7.set_xlabel('Wavelength [µm]', fontsize=11)
+    ax7.set_ylabel('Ratio [%]', fontsize=11)
+    ax7.set_title('Total Flux Ratio', fontsize=12, fontweight='bold')
+    ax7.grid(True, alpha=0.3)
     
-    # Row 4: Performance metrics and parameters
-    ax8 = fig.add_subplot(gs[3, 0])
-    ax8.axis('off')
-    
-    # Calculate average fluxes across wavelengths
+    # Row 4: Information boxes on left, compact
+    ax_perf = fig.add_subplot(gs[3, 0:3])  # wider box (3 columns instead of 2)
+    ax_perf.axis('off')
+
     sed_sca_total = np.sum(results['sed']['flux_scattered'])
     sed_therm_total = np.sum(results['sed']['flux_thermal'])
     sed_total = np.sum(results['sed']['flux_total'])
@@ -301,84 +335,56 @@ def plot_comparison(results):
     img_therm_total = np.sum(results['image']['flux_thermal'])
     img_total = np.sum(results['image']['flux_total'])
     
-    perf_text = (
-        f"PERFORMANCE\n"
-        f"═══════════\n"
-        f"SED:\n"
-        f"  Time: {results['sed']['time']:.3f}s\n"
-        f"  ±{results['sed']['time_std']:.3f}s\n"
-        f"  Mem: {results['sed']['memory']:.1f} MB\n\n"
-        f"Image:\n"
-        f"  Time: {results['image']['time']:.3f}s\n"
-        f"  ±{results['image']['time_std']:.3f}s\n"
-        f"  Mem: {results['image']['memory']:.1f} MB\n\n"
-        f"TOTAL FLUXES\n"
-        f"════════════\n"
-        f"SED:\n"
-        f"  Sca: {sed_sca_total:.2e}\n"
-        f"  Thm: {sed_therm_total:.2e}\n"
-        f"  Tot: {sed_total:.2e}\n\n"
-        f"Image:\n"
-        f"  Sca: {img_sca_total:.2e}\n"
-        f"  Thm: {img_therm_total:.2e}\n"
-        f"  Tot: {img_total:.2e}\n\n"
-        f"Speedup: {results['comparison']['speedup']:.2f}x"
-    )
-    ax8.text(0.05, 0.55, perf_text, fontsize=9, verticalalignment='center',
-            fontfamily='monospace', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
-    
-    ax9 = fig.add_subplot(gs[3, 1])
-    ax9.axis('off')
+    # Build full parameter list text (all model params), compacted by rows
     params = results['params']
-    funcs = results['functions']
-    param_text = (
-        f"MODEL SETUP\n"
-        f"═══════════\n"
-        f"Density: {funcs['density']}\n"
-        f"Size dist: {funcs['size_dist']}\n"
-        f"Phase: {funcs['phase']}\n\n"
-        f"PARAMETERS\n"
-        f"══════════\n"
-        f"λ: {wavelengths[0]:.1f}-{wavelengths[-1]:.1f} µm\n"
-        f"r0: {params['r0']:.3f} AU\n"
-        f"h0: {params['h0']:.4f} AU\n"
-        f"αᵢₙ: {params['alphain']:.1f}\n"
-        f"αₒᵤₜ: {params['alphaout']:.1f}\n"
-        f"β: {params['beta']:.1f}, γ: {params['gamma']:.1f}\n"
-        f"i: {params['itilt']:.1f}°\n"
-        f"PA: {params['PA']:.1f}°\n"
-        f"ω: {params['omega']:.1f}°\n"
-        f"M_tot: {params['M_tot']:.2e} M⊕"
+    param_items = []
+    for k, v in params.items():
+        if isinstance(v, (float, np.floating)):
+            param_items.append(f"{k}={v:.4g}")
+        else:
+            param_items.append(f"{k}={v}")
+    param_lines = [" | ".join(param_items[i:i+3]) for i in range(0, len(param_items), 3)]
+    param_block = "\n".join(param_lines)
+
+    sed_norm = results['normalization']['sed_norm_factor']
+    img_norm = results['normalization']['image_norm_factor']
+    norm_ratio = results['normalization']['ratio_image_to_sed']
+
+    perf_text = (
+        f"PERFORMANCE  |  SED: {results['sed']['time']:.3f}s ± {results['sed']['time_std']:.3f}s, {results['sed']['memory']:.1f} MB"
+        f"  |  Image: {results['image']['time']:.3f}s ± {results['image']['time_std']:.3f}s, {results['image']['memory']:.1f} MB"
+        f"  |  Speedup: {results['comparison']['speedup']:.2f}x\n"
+        f"MODEL: density={results['functions']['density']} | size={results['functions']['size_dist']} | phase={results['functions']['phase']}\n"
+        f"{param_block}\n"
+        f"NORM: SED={sed_norm:.6e} | Image={img_norm:.6e} | Image/SED={norm_ratio:.6e}"
     )
-    ax9.text(0.05, 0.55, param_text, fontsize=9.5, verticalalignment='center',
-            fontfamily='monospace', bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.5))
+    ax_perf.text(
+        0.02, 0.5, perf_text, fontsize=8.2, verticalalignment='center',
+        fontfamily='monospace',
+        bbox=dict(boxstyle='round,pad=0.35', facecolor='lightblue', alpha=0.6)
+    )
+
+    ax_stats = fig.add_subplot(gs[3, 3])  # moved to last column only
+    ax_stats.axis('off')
     
-    ax10 = fig.add_subplot(gs[3, 2])
-    ax10.axis('off')
-    
-    # Flux consistency stats
     mean_ratio = np.mean(results['comparison']['flux_ratio'])
     std_ratio = np.std(results['comparison']['flux_ratio'])
     max_diff = np.max(np.abs(results['comparison']['flux_diff_percent']))
     
     stats_text = (
         f"FLUX CONSISTENCY\n"
-        f"════════════════\n"
-        f"Image/SED ratio:\n"
-        f"  Mean: {mean_ratio:.4f}\n"
-        f"  Std:  {std_ratio:.4f}\n"
-        f"  Range: [{np.min(results['comparison']['flux_ratio']):.4f},\n"
-        f"          {np.max(results['comparison']['flux_ratio']):.4f}]\n\n"
-        f"Max difference:\n"
-        f"  {max_diff:.2f}%\n\n"
-        f"Image config:\n"
-        f"  {results['config']['nx']}×{results['config']['ny']} pix\n"
-        f"  {results['config']['pixAU']:.4f} AU/pix"
+        f"Mean={mean_ratio:.4f}\n"
+        f"Std={std_ratio:.4f}\n"
+        f"Max Δ={max_diff:.2f}%\n"
+        f"Cfg: {results['config']['nx']}×{results['config']['ny']}"
     )
-    ax10.text(0.1, 0.55, stats_text, fontsize=10, verticalalignment='center',
-             fontfamily='monospace', bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.5))
-    
-    plt.suptitle('SED vs Image Generation Comparison', fontsize=16, fontweight='bold', y=0.995)
+    ax_stats.text(
+        0.05, 0.5, stats_text, fontsize=8.8, verticalalignment='center',
+        fontfamily='monospace',
+        bbox=dict(boxstyle='round,pad=0.35', facecolor='lightyellow', alpha=0.6)
+    )
+
+    plt.suptitle('SED vs Image Generation Comparison', fontsize=16, fontweight='bold', y=0.998)
     
     return fig
 
@@ -388,17 +394,17 @@ if __name__ == "__main__":
     print("="*70 + "\n")
     
     # Test 1: Few wavelengths
-    print("\n### TEST 1: Few wavelengths (3) ###\n")
-    results_few = benchmark_sed_vs_image(
-        wavelengths=np.array([2.0, 3.0, 4.0]),
-        nx=128, ny=128, pixAU=0.003, n_runs=3
-    )
+    # print("\n### TEST 1: Few wavelengths (3) ###\n")
+    # results_few = benchmark_sed_vs_image(
+    #     wavelengths=np.array([2.0, 3.0, 4.0]),
+    #     nx=128, ny=128, pixAU=0.003, n_runs=3
+    # )
     
     # Test 2: Many wavelengths
-    print("\n### TEST 2: Many wavelengths (10) ###\n")
+    print("\n### TEST 2: Many wavelengths (50) ###\n")
     results_many = benchmark_sed_vs_image(
-        wavelengths=np.linspace(2.0, 4.0, 10),
-        nx=128, ny=128, pixAU=0.003, n_runs=2
+        wavelengths=np.linspace(2, 50, 5),
+        nx=128, ny=128, n_runs=1, FOV_AU=800
     )
     
     # Generate plots
@@ -406,9 +412,9 @@ if __name__ == "__main__":
     print("GENERATING PLOTS")
     print("="*70)
     
-    fig1 = plot_comparison(results_few)
-    fig1.savefig('benchmark_SEDvsimg_few.png', dpi=150, bbox_inches='tight')
-    print("✓ Saved: benchmark_SEDvsimg_few.png")
+    # fig1 = plot_comparison(results_few)
+    # fig1.savefig('benchmark_SEDvsimg_few.png', dpi=150, bbox_inches='tight')
+    # print("✓ Saved: benchmark_SEDvsimg_few.png")
     
     fig2 = plot_comparison(results_many)
     fig2.savefig('benchmark_SEDvsimg_many.png', dpi=150, bbox_inches='tight')

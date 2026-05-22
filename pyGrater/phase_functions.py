@@ -2,7 +2,7 @@
 import numpy as np
 
 def isotropic(phi, **kwargs):
-    return np.ones(phi.shape)*1.0 / (4.0 * np.pi)
+    return np.ones(phi.shape)/ (4.0 * np.pi)
 
 
 def HenveyGreenstein(phi, **kwargs):

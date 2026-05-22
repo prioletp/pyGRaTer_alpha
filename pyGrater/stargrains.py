@@ -3,6 +3,7 @@
 # from pyGrater import grain_temperatures
 from pyGrater import utils as utl 
 from pyGrater.config.paths import DataPathConfig
+from scipy.stats import binned_statistic
 
 from pathlib import Path
 import yaml
@@ -15,6 +16,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 from pprint import pformat  # already imported
 
+from astropy.io import fits
 
 class Grain:
     def __init__(self, **kwargs):
@@ -304,6 +306,9 @@ class Star:
         print("="*60)
         star_name = kwargs.get('star_name', 'bPic')
         N_waves = kwargs.get('N_waves', 2000)
+        bin_ratio = kwargs.get('bin_ratio', 20)
+
+        
         data_path = DataPathConfig.get_data_path()
         self.path_spectrum_data = str(data_path / 'star_data' / "NextGenSpectra")
 
@@ -311,10 +316,31 @@ class Star:
         self.star_properties_path = data_path / 'star_data' / "stars_main_properties.txt"
         print(f"Star properties file: {self.star_properties_path}")  # prettier path print
         self.star_properties = self.load_star_properties()
+        
         # Pretty print loaded properties (dict-like)
         print(f"Star name: '{self.star_name}'")
-        self.get_spectra(N_waves, waves=None, min_wave=None, max_wave=None, norm=True)
-    
+        print('The temperature is {:.1f} K'.format(self.temp))
+        print('The logg is {:.2f} cgs'.format(self.logg))
+        print('The radius is {:.2f} R_sun'.format(self.radius))
+        print('The distance is {:.2f} pc'.format(self.distance))
+        print('The spectral type is {}'.format(self.spectral_type))
+        print('The normalization band is {}'.format(self.normband))
+        print('The apparent magnitude in {} band is {:.2f} mag'.format(self.normband, self.apmag))
+        print(f'The stellar spectrum is binned by a factor of {bin_ratio}')
+
+        # self.get_spectra(N_waves, waves=None, min_wave=None, max_wave=None, norm=True)
+        # self.get_spectra_GRATER()
+
+        self.get_spectra(bin_ratio=bin_ratio, norm=True)
+        self.get_spectral_full(norm=True)
+
+    def read_star_fits(self, fitsname):
+        """Read Q values from FITS file written by IDL save_Q_as_fits procedure."""
+        with fits.open(fitsname) as hdul:
+            data = hdul[1].data  # IDL mwrfits writes to extension 1
+            flux  = data['FLUX'][0]
+            lam    = data['LAMBDA'][0]
+        return flux, lam
 
     def load_star_properties(self) :
         """Load star properties from external file and create star dictionnary"""
@@ -374,8 +400,70 @@ class Star:
         self.period = (float(star_properties_dic['per'])*units.year).to(units.s)  # in s
         
         return star_properties_dic
-    
-    def get_spectra(self, N_waves, waves=None, min_wave=None, max_wave=None, norm=True): #,band,Normmag,waveRef,norm=True) :
+    def get_spectral_full(self, norm=True) : #,band,Normmag,waveRef,norm=True) :
+        '''Find the closest spectra in NextGen
+        Normalize it by the specified band and magnitude
+        except if norm is False'''
+        band = self.normband
+        Normmag = self.apmag
+        path_spectrum_data = self.path_spectrum_data
+        # Find the closest spectra (in temperature then log(g)), then load it
+        spec = np.loadtxt(path_spectrum_data + '/NextGen.txt', 
+                        skiprows=1, usecols=(0,1))
+        specTemp = spec[abs(self.temp-spec[:,0])==
+                        np.min(abs(self.temp-spec[:,0]))]
+        print('Closest temperatures in the grid:', specTemp)
+        specFin = specTemp[abs(self.logg-specTemp[:,1])==
+                        np.min(abs(self.logg-specTemp[:,1]))]
+        print('Closest log(g) in the grid:', specFin)
+        if abs(self.temp-specFin[0][0]) > 100 :
+            print('NB : Stellar temperature is too far')
+        if abs(self.logg-specFin[0][1]) > 0.5 :
+            print('NB : log(g) is not good')          
+        filename = ( path_spectrum_data + '/'
+                    '{:.0f}_{:.1f}.txt'.format(specFin[0][0],specFin[0][1]) )
+        
+        spectra = np.loadtxt(filename, skiprows=2)
+        
+        lam = spectra[:,0]
+        print('The number of wavelengths in the original spectrum is:', lam.size)
+        N_waves = lam.size
+        Fnu = spectra[:,1]  
+         
+        idx_sort_waves = np.argsort(lam) # Sort the wavelengths
+        Fnu = Fnu[idx_sort_waves] 
+        lam, idx2 = np.unique(lam[idx_sort_waves],return_index=True)  # Suppress the twins
+        Fnu = Fnu[idx2]
+
+        if norm :
+            print()
+            fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+            print('AQUI', V0pt, fluxV)
+            Fnu = Fnu/fluxV * 10.**(-Normmag/2.5) * V0pt # Flux seen from earth
+        else :
+            Fnu = Fnu*(self.radius/(self.distance*cst.pc))**2
+            fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+            Fnu = Fnu/fluxV * 10.**(-4.65/2.5) * V0pt
+            
+        # Conversions and Lumonisity calculation
+        F_lam = Fnu * (cst.c / lam**2 )  # Jy // Flux seen from the earth
+        F_lam = F_lam * (1e2 * 1.e-19) # Jy -> erg/s/cm^2/micron
+        Lstar = (simpson(F_lam,lam) * (4*np.pi*(self.distance*cst.pc*1e2)**2)/cst.L_sun.cgs.value) # Unit : L_sun
+        
+        # Results
+        self.waves_full_range = lam
+        self.flux_full_range = Fnu # in Jy
+        self.lum_full_range = Lstar
+        # print(f"Stellar luminosity: {self.lum:.2f} L_sun")
+        if norm :
+            print(f'Stellar spectrum loaded from {self.waves_full_range[0]} to {self.waves_full_range[-1]} µm and normalized.')
+            print(f"Normalized in {band}-band to {Normmag} mag")
+            print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+        else:
+            print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and not normalized.')   
+            print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+        return None
+    def get_spectra_GRATER(self) : #,band,Normmag,waveRef,norm=True) :
         '''Find the closest spectra in NextGen
         Normalize it by the specified band and magnitude
         except if norm is False'''
@@ -389,60 +477,163 @@ class Star:
                         np.min(abs(self.temp-spec[:,0]))]
         specFin = specTemp[abs(self.logg-specTemp[:,1])==
                         np.min(abs(self.logg-specTemp[:,1]))]
+        print('The closest spectrum in the grid has T_eff = {:.1f} K and log(g) = {:.1f} cgs'.format(specFin[0][0], specFin[0][1]))
         if abs(self.temp-specFin[0][0]) > 100 :
             print('NB : Stellar temperature is too far')
         if abs(self.logg-specFin[0][1]) > 0.5 :
             print('NB : log(g) is not good')          
         filename = ( path_spectrum_data + '/'
                     '{:.0f}_{:.1f}.txt'.format(specFin[0][0],specFin[0][1]) )
-        spectra = np.loadtxt(filename, skiprows=2)
-        # print('Shape of spectra:', spectra.shape)
-        # Spectra data ordering and cleaning
-        lam = spectra[:,0]
-        Fnu = spectra[:,1]   
-        idx = np.argsort(lam) # Sort the wavelengths
-        Fnu = Fnu[idx] 
-        lam, idx2 = np.unique(lam[idx],return_index=True)  # Suppress the twins
-        Fnu = Fnu[idx2]
-        # print('First min and max wavelength:', lam[0], lam[-1])
-        # If needed, reduce star_lam coverage to not exceed grain_lam coverage
-        if not waves is None:
-            idx3 = 0
-            idx4 = lam.size-1
-            if lam[0] < waves[0] : # If min(lam_star) < min(lam_grain)
-                idx3 = np.where(lam<waves[0])[0][-1]
-            if lam[-1] > waves[-1] : # If max(lam_star) > max(lam_grain)
-                idx4 = np.where(lam>waves[-1])[0][0]
-            lam = lam[idx3:idx4]
-            Fnu = Fnu[idx3:idx4]
         
-        if not (min_wave is None or max_wave is None) :
-            print('WE ARE INNNNNN')
-            idx3 = 0
-            idx4 = lam.size-1
-            if lam[0] < min_wave : # If min(lam_star) < min(lam_grain)
-                idx3 = np.where(lam<=min_wave)[0][-1]
-                print('idx3:', idx3)
-            if lam[-1] > max_wave : # If max(lam_star) > max(lam_grain)
-                idx4 = np.where(lam>=max_wave)[0][0]
-                print('idx4:', idx4)
-            lam = lam[idx3:idx4]
-            Fnu = Fnu[idx3:idx4]
-        # print('Wavelength range after cleaning:', lam[0], lam[-1])
-        # Resampling star_lam and star_F
-        lam = utl.congrid(lam,(N_waves,) )
-        # print('Wavelength range after resampling:', lam[0], lam[-1])
-        Fnu = utl.congrid(Fnu,(N_waves,) )   
+        # spectra = np.loadtxt(filename, skiprows=2)
+        
+        # lam = spectra[:,0]
+        # print('The number of wavelengths in the original spectrum is:', lam.size)
+        # N_waves = lam.size
+        # Fnu = spectra[:,1]  
+         
+        # idx_sort_waves = np.argsort(lam) # Sort the wavelengths
+        # Fnu = Fnu[idx_sort_waves] 
+        # lam, idx2 = np.unique(lam[idx_sort_waves],return_index=True)  # Suppress the twins
+        # Fnu = Fnu[idx2]
+        # if norm :
+        #     print('Normalizing in the full spectrum')
+        #     fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+        #     print('AQUI', V0pt, fluxV)
+        #     Fnu = Fnu/fluxV * 10.**(-Normmag/2.5) * V0pt # Flux seen from earth
+        # else :
+        #     Fnu = Fnu*(self.radius/(self.distance*cst.pc))**2
+        #     fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+        #     Fnu = Fnu/fluxV * 10.**(-4.65/2.5) * V0pt
+        # plt.plot(np.arange(len(lam)), lam)
+        # lam = utl.congrid_new(lam, (N_waves//bin_ratio,), method='cubic', center=True, minusone=False)
+        # Fnu = utl.congrid_new(Fnu,(N_waves//bin_ratio,), method='cubic', center=True, minusone=False)
+        
+        file_path = '/Users/prioletp/PhD/public_codes/pyGrater/pyGrater/tests/QABSFROMGRATER/stellar_spectrum.fits'
+        flux, lam = self.read_star_fits(file_path)
+        print('Flux shape:', flux.shape)
+        print('Lambda shape:', lam.shape)
+        plt.semilogx(lam, flux, label='GRATER Star.flux', lw=2)
+        lam_sort = np.argsort(lam)
+        Fnu = flux[lam_sort]
+        lam = lam[lam_sort]
+        self.waves = lam
+        self.flux = Fnu # in Jy
+        F_lam = Fnu * (cst.c / lam**2 )  # Jy // Flux seen from the earth
+        F_lam = F_lam * (1e2 * 1.e-19) # Jy -> erg/s/cm^2/micron
+        Lstar = (simpson(F_lam,lam) * (4*np.pi*(self.distance*cst.pc*1e2)**2)/cst.L_sun.cgs.value) # Unit : L_sun
+        self.lum = Lstar
 
-        # Flux in the normalization band
+        return None
+        # print('The number of wavelengths after removing duplicates is:', lam.size)
+        # print('The first and last wavelengths after removing duplicates are:', lam[:20])
+        bins = np.quantile(lam, np.linspace(0, 1, N_waves//bin_ratio+1))  # Define bins for binning
+        # # self.plot_quantile_bins(lam, nbins=N_waves//bin_ratio, show_centers=True)
+        Fnu, bin_edges, _ = binned_statistic(lam, Fnu, statistic='mean', bins=bins)  #Binning the data by a factor of bin_ratio
+        # print('These are the bins edges after binning:', bin_edges)
+        lam = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        # print('These are the wavelengths after binning:', lam)
+        # print('The number of wavelengths after binning is:', lam.size)
+
+            
+        # # Conversions and Lumonisity calculation
+        # F_lam = Fnu * (cst.c / lam**2 )  # Jy // Flux seen from the earth
+        # F_lam = F_lam * (1e2 * 1.e-19) # Jy -> erg/s/cm^2/micron
+        # Lstar = (simpson(F_lam,lam) * (4*np.pi*(self.distance*cst.pc*1e2)**2)/cst.L_sun.cgs.value) # Unit : L_sun
+        
+        # # Results
+        # self.waves = lam
+        # self.flux = Fnu # in Jy
+        # self.lum = Lstar
+        # # print(f"Stellar luminosity: {self.lum:.2f} L_sun")
+        # if norm :
+        #     print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and normalized.')
+        #     print(f"Normalized in {band}-band to {Normmag} mag")
+        #     print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+        # else:
+        #     print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and not normalized.')   
+        #     print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+        # return None
+    def get_spectra(self, bin_ratio=20, norm=True): #,band,Normmag,waveRef,norm=True) :
+        '''Find the closest spectra in NextGen
+        Normalize it by the specified band and magnitude
+        except if norm is False'''
+        band = self.normband
+        Normmag = self.apmag
+        path_spectrum_data = self.path_spectrum_data
+        # Find the closest spectra (in temperature then log(g)), then load it
+        spec = np.loadtxt(path_spectrum_data + '/NextGen.txt', 
+                        skiprows=1, usecols=(0,1))
+        specTemp = spec[abs(self.temp-spec[:,0])==
+                        np.min(abs(self.temp-spec[:,0]))]
+        specFin = specTemp[abs(self.logg-specTemp[:,1])==
+                        np.min(abs(self.logg-specTemp[:,1]))]
+        print('The closest spectrum in the grid has T_eff = {:.1f} K and log(g) = {:.1f} cgs'.format(specFin[0][0], specFin[0][1]))
+
+        if abs(self.temp-specFin[0][0]) > 100 :
+            print('NB : Stellar temperature is too far')
+        if abs(self.logg-specFin[0][1]) > 0.5 :
+            print('NB : log(g) is not good')          
+        filename = ( path_spectrum_data + '/'
+                    '{:.0f}_{:.1f}.txt'.format(specFin[0][0],specFin[0][1]) )
+        
+        spectra = np.loadtxt(filename, skiprows=2)
+        
+        lam = spectra[:,0]
+        N_waves = lam.size
+        Fnu = spectra[:,1]  
+         
+        idx_sort_waves = np.argsort(lam) # Sort the wavelengths
+        Fnu = Fnu[idx_sort_waves] 
+        lam, idx2 = np.unique(lam[idx_sort_waves],return_index=True)  # Suppress the twins
+        Fnu = Fnu[idx2]
         if norm :
+            print('Normalizing in the full spectrum')
             fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+            print('AQUI', V0pt, fluxV)
             Fnu = Fnu/fluxV * 10.**(-Normmag/2.5) * V0pt # Flux seen from earth
         else :
             Fnu = Fnu*(self.radius/(self.distance*cst.pc))**2
             fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
             Fnu = Fnu/fluxV * 10.**(-4.65/2.5) * V0pt
+        # plt.plot(np.arange(len(lam)), lam)
+        # lam = utl.congrid_new(lam, (N_waves//bin_ratio,), method='cubic', center=True, minusone=False)
+        # Fnu = utl.congrid_new(Fnu,(N_waves//bin_ratio,), method='cubic', center=True, minusone=False)
         
+        # file_path = '/Users/prioletp/PhD/public_codes/pyGrater/pyGrater/tests/QABSFROMGRATER/stellar_spectrum.fits'
+        # flux, lam = self.read_star_fits(file_path)
+        # print('Flux shape:', flux.shape)
+        # print('Lambda shape:', lam.shape)
+        # plt.semilogx(lam, flux, label='GRATER Star.flux', lw=2)
+        # lam_sort = np.argsort(lam)
+        # Fnu = flux[lam_sort]
+        # lam = lam[lam_sort]
+        # self.waves = lam
+        # self.flux = Fnu # in Jy
+        # F_lam = Fnu * (cst.c / lam**2 )  # Jy // Flux seen from the earth
+        # F_lam = F_lam * (1e2 * 1.e-19) # Jy -> erg/s/cm^2/micron
+        # Lstar = (simpson(F_lam,lam) * (4*np.pi*(self.distance*cst.pc*1e2)**2)/cst.L_sun.cgs.value) # Unit : L_sun
+        # self.lum = Lstar
+
+        # return None
+        # print('The number of wavelengths after removing duplicates is:', lam.size)
+        # print('The first and last wavelengths after removing duplicates are:', lam[:20])
+        # print('Binning the spectrum by a factor of {}...'.format(bin_ratio))
+        bins = np.quantile(lam, np.linspace(0, 1, N_waves//bin_ratio+1))  # Define bins for binning
+        # # # self.plot_quantile_bins(lam, nbins=N_waves//bin_ratio, show_centers=True)
+        Fnu, bin_edges, _ = binned_statistic(lam, Fnu, statistic='mean', bins=bins)  #Binning the data by a factor of bin_ratio
+        # # print('These are the bins edges after binning:', bin_edges)
+        lam = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        # print('These are the wavelengths after binning:', lam)
+        # print('The number of wavelengths after binning is:', lam.size)
+
+        # if norm :
+        #     fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+        #     Fnu = Fnu/fluxV * 10.**(-Normmag/2.5) * V0pt # Flux seen from earth
+        # else :
+        #     Fnu = Fnu*(self.radius/(self.distance*cst.pc))**2
+        #     fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+        #     Fnu = Fnu/fluxV * 10.**(-4.65/2.5) * V0pt   
         # Conversions and Lumonisity calculation
         F_lam = Fnu * (cst.c / lam**2 )  # Jy // Flux seen from the earth
         F_lam = F_lam * (1e2 * 1.e-19) # Jy -> erg/s/cm^2/micron
@@ -452,7 +643,7 @@ class Star:
         self.waves = lam
         self.flux = Fnu # in Jy
         self.lum = Lstar
-        print(f"Stellar luminosity: {self.lum:.2f} L_sun")
+        # print(f"Stellar luminosity: {self.lum:.2f} L_sun")
         if norm :
             print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and normalized.')
             print(f"Normalized in {band}-band to {Normmag} mag")
@@ -460,7 +651,161 @@ class Star:
         else:
             print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and not normalized.')   
             print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+        return None
+    def plot_quantile_bins(self, x, nbins=20, show_centers=True):
+        """
+        Visualize equal-population (quantile) bins.
 
+        Parameters
+        ----------
+        x : array-like
+            Data along x-axis
+        nbins : int
+            Number of bins
+        show_centers : bool
+            Whether to plot bin centers (median per bin)
+        """
+        
+        x = np.asarray(x)
+        x = x[np.isfinite(x)]
+        
+        # Compute quantile bins
+        quantiles = np.linspace(0, 1, nbins + 1)
+        bins = np.quantile(x, quantiles)
+        
+        # Histogram for background
+        plt.figure(figsize=(8, 4))
+        plt.hist(x, bins=50, alpha=0.3)
+        
+        # Plot bin edges
+        for b in bins:
+            plt.axvline(b, linestyle='--', alpha=0.7)
+        
+        # Shade bins
+        for i in range(len(bins) - 1):
+            plt.axvspan(bins[i], bins[i+1], alpha=0.1)
+        
+        # Compute and plot bin centers (median)
+        if show_centers:
+            centers = []
+            for i in range(len(bins) - 1):
+                mask = (x >= bins[i]) & (x < bins[i+1])
+                if np.any(mask):
+                    centers.append(np.median(x[mask]))
+                else:
+                    centers.append(np.nan)
+            
+            centers = np.array(centers)
+            y_level = plt.ylim()[1] * 0.9
+            plt.scatter(centers, np.full_like(centers, y_level), marker='o')
+        plt.xscale('log')
+        plt.xlabel("x")
+        plt.ylabel("Counts")
+        plt.title(f"Equal-population bins (nbins={nbins})")
+        plt.show()
+        
+        return bins
+
+    def interpolate_spectra(self, waves):
+        return None
+    # def get_spectra(self, N_waves=None, waves=None, min_wave=None, max_wave=None, norm=True): #,band,Normmag,waveRef,norm=True) :
+    #     '''Find the closest spectra in NextGen
+    #     Normalize it by the specified band and magnitude
+    #     except if norm is False'''
+    #     band = self.normband
+    #     Normmag = self.apmag
+    #     path_spectrum_data = self.path_spectrum_data
+    #     # Find the closest spectra (in temperature then log(g)), then load it
+    #     spec = np.loadtxt(path_spectrum_data + '/NextGen.txt', 
+    #                     skiprows=1, usecols=(0,1))
+    #     specTemp = spec[abs(self.temp-spec[:,0])==
+    #                     np.min(abs(self.temp-spec[:,0]))]
+    #     print('Closest temperatures in the grid:', specTemp)
+        
+
+    #     specFin = specTemp[abs(self.logg-specTemp[:,1])==
+    #                     np.min(abs(self.logg-specTemp[:,1]))]
+    #     print('Closest log(g) in the grid:', specFin)
+    #     if abs(self.temp-specFin[0][0]) > 100 :
+    #         print('NB : Stellar temperature is too far')
+    #     if abs(self.logg-specFin[0][1]) > 0.5 :
+    #         print('NB : log(g) is not good')          
+    #     filename = ( path_spectrum_data + '/'
+    #                 '{:.0f}_{:.1f}.txt'.format(specFin[0][0],specFin[0][1]) )
+    #     spectra = np.loadtxt(filename, skiprows=2)
+    #     # print('Shape of spectra:', spectra.shape)
+    #     # Spectra data ordering and cleaning
+    #     print('Stellar spectra file:', filename)
+
+    #     lam = spectra[:,0]
+    #     if N_waves is None :
+    #         N_waves = lam.size
+        
+    #     Fnu = spectra[:,1]   
+    #     idx = np.argsort(lam) # Sort the wavelengths
+    #     Fnu = Fnu[idx] 
+    #     lam, idx2 = np.unique(lam[idx],return_index=True)  # Suppress the twins
+    #     Fnu = Fnu[idx2]
+    #     # print('First min and max wavelength:', lam[0], lam[-1])
+    #     # If needed, reduce star_lam coverage to not exceed grain_lam coverage
+    #     if not waves is None:
+    #         idx3 = 0
+    #         idx4 = lam.size-1
+    #         if lam[0] < waves[0] : # If min(lam_star) < min(lam_grain)
+    #             idx3 = np.where(lam<waves[0])[0][-1]
+    #         if lam[-1] > waves[-1] : # If max(lam_star) > max(lam_grain)
+    #             idx4 = np.where(lam>waves[-1])[0][0]
+    #         lam = lam[idx3:idx4]
+    #         Fnu = Fnu[idx3:idx4]
+        
+    #     if not (min_wave is None or max_wave is None) :
+    #         print('WE ARE INNNNNN')
+    #         idx3 = 0
+    #         idx4 = lam.size-1
+    #         if lam[0] < min_wave : # If min(lam_star) < min(lam_grain)
+    #             idx3 = np.where(lam<=min_wave)[0][-1]
+    #             print('idx3:', idx3)
+    #         if lam[-1] > max_wave : # If max(lam_star) > max(lam_grain)
+    #             idx4 = np.where(lam>=max_wave)[0][0]
+    #             print('idx4:', idx4)
+    #         lam = lam[idx3:idx4]
+    #         Fnu = Fnu[idx3:idx4]
+    #     # print('Wavelength range after cleaning:', lam[0], lam[-1])
+    #     # Resampling star_lam and star_F
+    #     lam = utl.congrid(lam,(N_waves,) )
+    #     # print('Wavelength range after resampling:', lam[0], lam[-1])
+    #     Fnu = utl.congrid(Fnu,(N_waves,) )   
+
+    #     # Flux in the normalization band
+    #     if norm :
+    #         fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+    #         Fnu = Fnu/fluxV * 10.**(-Normmag/2.5) * V0pt # Flux seen from earth
+    #     else :
+    #         Fnu = Fnu*(self.radius/(self.distance*cst.pc))**2
+    #         fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
+    #         Fnu = Fnu/fluxV * 10.**(-4.65/2.5) * V0pt
+        
+    #     # Conversions and Lumonisity calculation
+    #     F_lam = Fnu * (cst.c / lam**2 )  # Jy // Flux seen from the earth
+    #     F_lam = F_lam * (1e2 * 1.e-19) # Jy -> erg/s/cm^2/micron
+    #     Lstar = (simpson(F_lam,lam) * (4*np.pi*(self.distance*cst.pc*1e2)**2)/cst.L_sun.cgs.value) # Unit : L_sun
+        
+    #     # Results
+    #     self.waves = lam
+    #     self.flux = Fnu # in Jy
+    #     self.lum = Lstar
+    #     # print(f"Stellar luminosity: {self.lum:.2f} L_sun")
+    #     if norm :
+    #         print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and normalized.')
+    #         print(f"Normalized in {band}-band to {Normmag} mag")
+    #         print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+    #     else:
+    #         print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and not normalized.')   
+    #         print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+    def get_flux_in_band(self, band):
+        flux_band, V0pt = utl.flux_in_band(band, self.waves, self.flux)
+        return flux_band
+    
 class GrainStar:
     def __init__(self, grain, star, init_thermal_distance=True, N_temp=300, redo_therm_dist=False, talk=True):
         """
