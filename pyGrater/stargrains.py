@@ -66,11 +66,13 @@ class Grain:
         Set `redo_Q=True` to force recalculation.
         """
         data_path = DataPathConfig.get_data_path()
-        
+
+                
         redo_Q = kwargs.get('redo_Q', False)
         composition = kwargs.get('composition', 'aC_ACAR')
         if 'composition' not in kwargs:
             print(f"No composition specified, using default composition: '{composition}'")
+        
         
         print("="*60)
         print("CREATING GRAIN OBJECT")

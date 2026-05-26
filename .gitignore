@@ -1,6 +1,9 @@
 # Data folder (users download separately)
 data/
-
+logs/*
+#Other caches
+.spyproject/
+.venv/
 # Python cache
 __pycache__/
 *.py[cod]

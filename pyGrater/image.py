@@ -1,6 +1,6 @@
 #%%
 from pyGrater.utils import cylinder, hyperboloid_2_sheets, calculate_normalization_density, calculate_normalization_density_jacobian_sublimation_fast as calculate_normalization_density_jacobian_sublimation
-from pyGrater.radiative_transfer import Fluxes
+from pyGrater.fluxes import Fluxes
 import time
 import matplotlib.pyplot as plt
 import numpy as np

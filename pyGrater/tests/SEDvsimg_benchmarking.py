@@ -21,8 +21,8 @@ from pyGrater.stargrains import Grain, Star
 from pyGrater.density import two_power_law
 from pyGrater.size_distributions import power_law_distribution
 from pyGrater.phase_functions import isotropic as phase_function
-from pyGrater.get_image_better_int_mine import Image
-from pyGrater.SED_better_integration_benchmark import SED
+from pyGrater.image import Image
+from pyGrater.SED import SED
 # FOV_AU = 1
 def get_memory_usage():
     """Get current memory usage in MB."""
@@ -65,8 +65,8 @@ def benchmark_sed_vs_image(wavelengths=None, nx=256, ny=256, FOV_AU=1, n_runs=3)
     print()
     
     # Setup
-    grain = Grain(redo_Q=False)
-    star = Star(star_name='bPic')
+    grain = Grain(redo_Q=False, composition='astroSi')  # Load precomputed optical efficiencies
+    star = Star(star_name='HD113766')
     
     test_params = {
         'r0': 200, 'h0': 10, 'alphain': 10., 'alphaout': -6,
