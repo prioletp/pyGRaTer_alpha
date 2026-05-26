@@ -9,4 +9,3 @@ N_sizes: 600
 N_waves: 1000
 N_waves_undersampled: 1000
 
-composition: 'astroSi'  # see material_list.txt for available compositions

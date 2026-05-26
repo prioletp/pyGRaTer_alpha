@@ -1,6 +1,6 @@
 #%%
 """
-SED_efficient_opus.py — Optimized SED computation
+SED.py — Optimized SED computation
 ===================================================
 Drop-in replacement for SED_better_integration_benchmark.py with major
 performance improvements while producing identical numerical results.
@@ -384,7 +384,7 @@ class SED:
         r_2d = d_clip[:, None] * np.ones_like(z_clip)
         if 'M_tot' in kwargs:
             M_tot = kwargs['M_tot'] * cst.M_earth.value
-            norm_factor = calculate_normalization_density_jacobian_sublimation_vfast(
+            norm_factor = calculate_normalization_density_jacobian_sublimation_fast(
                 self.flux_obj.stargrain_obj,
                 M_tot, sizes, d_clip, z_clip, Zm_clip, self.zeta,
                 grain_density, self.density_function, kwargs,

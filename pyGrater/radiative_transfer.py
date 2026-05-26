@@ -129,14 +129,14 @@ class Fluxes:
     #     B_nu_Jy = B_nu / 1e-23
 
     #     return B_nu_Jy
-    def thermal_flux(self, size_distribution_args):
+    def thermal_flux(self, **kwargs):
         """Vectorized thermal flux calculation"""
         # Setup size distribution
-        a_min, a_max = size_distribution_args['a_min'], size_distribution_args['a_max']
-        N_sizes = size_distribution_args['N_sizes_integral']
+        a_min, a_max = kwargs['a_min'], kwargs['a_max']
+        N_sizes = kwargs['N_sizes_integral']
         sizes = np.geomspace(a_min, a_max, N_sizes)
         self.sizes_for_integral = sizes  # Store for later use
-        size_dist = self.size_distribution_function(sizes, size_distribution_args)
+        size_dist = self.size_distribution_function(sizes, kwargs)
         
         # Initialize output array
         flux = np.zeros((len(self.wavelengths_for_calc), len(self.distances_for_flux)))
@@ -166,13 +166,13 @@ class Fluxes:
             
         return flux
 
-    def scattered_flux(self, size_distribution_args={}, phase_function_args={}):
+    def scattered_flux(self, **kwargs):
         # Setup size distribution
-        a_min, a_max = size_distribution_args['a_min'], size_distribution_args['a_max']
-        N_sizes = size_distribution_args['N_sizes_integral']
+        a_min, a_max = kwargs['a_min'], kwargs['a_max']
+        N_sizes = kwargs['N_sizes_integral']
         sizes = np.geomspace(a_min, a_max, N_sizes)
         self.sizes_for_integral = sizes  # Store for later use
-        size_dist = self.size_distribution_function(sizes, size_distribution_args)
+        size_dist = self.size_distribution_function(sizes, kwargs)
         
         # Initialize output array
         flux = np.zeros((len(self.wavelengths_for_calc), len(self.distances_for_flux)))
@@ -203,14 +203,14 @@ class Fluxes:
         
         # print(flux.shape)
         # print(flux[:,:,].shape)
-        phase_function = self.scattering_phase_function(self.scattering_angles, **phase_function_args)[np.newaxis, np.newaxis, :]   # → shape (Ntheta, 1, 1)
+        phase_function = self.scattering_phase_function(self.scattering_angles, **kwargs)[np.newaxis, np.newaxis, :]   # → shape (Ntheta, 1, 1)
         flux = phase_function * flux[:, :, np.newaxis] 
         # print(flux.shape)
         return flux
     
     def get_fluxes(self, size_distribution_args):
-        thermal = self.thermal_flux(size_distribution_args)
-        scattered = self.scattered_flux(size_distribution_args, size_distribution_args)
+        thermal = self.thermal_flux(**size_distribution_args)
+        scattered = self.scattered_flux(**size_distribution_args)
         return thermal, scattered
     
 # if __name__=='__main__':

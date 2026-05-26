@@ -1,3 +1,0 @@
-print_information: True
-
-composition: 'astroSi'  # see material_list.txt for available compositions

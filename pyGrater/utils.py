@@ -815,7 +815,6 @@ def flux_in_band(band, l_in, Fnu) :
     
     # test = (np.min(l_in) < np.min(l_sp)) and (np.max(l_sp) < np.max(l_in))
     test = (np.min(l_in) < np.min(l_sp)) and (np.max(l_sp) < np.max(l_in))
-    print('TEST BOOL', test, np.min(l_in), np.min(l_sp), np.max(l_sp), np.max(l_in))
     # to check if the spectral range is wider than the filter. I changed this PP. Now it checks whether the filter is wider than the spectral range...makes more sense, no?
     if test :        
         tr = scipy.interpolate.interp1d(l_sp,t_sp, kind='linear')
@@ -1149,8 +1148,6 @@ def calc_therm_dist(Qabs, Qabs_sizes, Qabs_waves, star_waves, star_flux,
     # temp = 3. * np.power(1.2, np.arange(int(m.log(Tsub_grain/3.)/m.log(1.2)) + 1))
     temp = np.geomspace(3, int(Tsub_grain), num=Ntemp)
     # temp = np.append(temp, [Tsub_grain])  # range of accessible temperatures
-    if talk:
-        print('These are the temperatures:', temp)
 
     # Init dist
     dist = np.zeros((Qabs_sizes.size, temp.size))
@@ -1162,7 +1159,6 @@ def calc_therm_dist(Qabs, Qabs_sizes, Qabs_waves, star_waves, star_flux,
     # Broadcast stellar flux to all grain sizes
     prod1 = func_flux(Qabs_waves)[None, :] * Qabs  # (n_sizes, n_waves)
     int1 = simpson(prod1, Qabs_waves, axis=1)      # (n_sizes,)
-    print('HERE 5', int1)
     # --- Planck function for all T and lambda ---
     h = cst.h.to('erg*s').value
     c = cst.c.value * 1e2   # cm/s
@@ -1200,26 +1196,21 @@ def calc_therm_dist(Qabs, Qabs_sizes, Qabs_waves, star_waves, star_flux,
     int1_exp = int1[:, None]  # (n_sizes, 1)
     with np.errstate(invalid="ignore", divide="ignore"):
         dist = np.sqrt(int1_exp / int2)
-    print('HERE3', dist)
     # Handle the "if int1 < 0" fallback
     # (broadcast version of original: copy previous value along temperature axis)
     mask_neg = int1 < 0
     if np.any(mask_neg):
         dist[mask_neg, 0] = 0  # first col has no i-1
         dist[mask_neg, 1:] = dist[mask_neg, :-1]
-    print('HERE2', dist)
     # Scale to AU
     if distance_to_star is not None:
         dist *= distance_to_star * cst.pc / 2.0 / cst.au
-    print('HERE1', dist)
     temp_range = temp
     therm_dist = dist + radius_star_Rsun * cst.R_sun / cst.au
-    print(radius_star_Rsun * cst.R_sun / cst.au)
-    print( cst.R_sun / cst.au)
+
     if save_path is not None :
         print('Thermal distances saved to:', save_path)
         np.savez(save_path, therm_dist=therm_dist, temp_range=temp_range)
-    print('HERElast:', therm_dist)
     return therm_dist, temp_range
 
     
@@ -1399,7 +1390,6 @@ def get_total_mass_from_normalization_density(
     Z_max_r  : (n_r,) per-radius vertical truncation
     zeta     : (N_zeta,) normalized coordinate in [-1, 1]
     """
-    print('The sizes in this function go from:', sizes.min(), 'to', sizes.max())
     # Size integral: integral of n(a) * m(a) da
     sizes_integrand = (4 * np.pi / 3) * grain_density * sizes**3 * size_distribution_function(sizes, size_dist_params_dic)
     mean_grain_mass = scipy.integrate.trapezoid(sizes_integrand, sizes)
@@ -1430,7 +1420,6 @@ def calculate_normalization_density_jacobian(
     Z_max_r  : (n_r,) per-radius vertical truncation
     zeta     : (N_zeta,) normalized coordinate in [-1, 1]
     """
-    print('The sizes in this function go from:', sizes.min(), 'to', sizes.max())
     # Size integral: integral of n(a) * m(a) da
     sizes_integrand = (4 * np.pi / 3) * grain_density * sizes**3 * size_distribution_function(sizes, size_dist_params_dic)
     mean_grain_mass = scipy.integrate.trapezoid(sizes_integrand, sizes)
@@ -1461,7 +1450,6 @@ def calculate_normalization_density_jacobian_test(
     Z_max_r  : (n_r,) per-radius vertical truncation
     zeta     : (N_zeta,) normalized coordinate in [-1, 1]
     """
-    print('The sizes in this function go from:', sizes.min(), 'to', sizes.max())
     # Size integral: integral of n(a) * m(a) da
     sizes_integrand = (4 * np.pi / 3) * grain_density * sizes**3 * size_distribution_function(sizes, size_dist_params_dic)
     mean_grain_mass = scipy.integrate.trapezoid(sizes_integrand, sizes)
@@ -1494,7 +1482,6 @@ def calculate_total_mass(
     Z_max_r  : (n_r,) per-radius vertical truncation
     zeta     : (N_zeta,) normalized coordinate in [-1, 1]
     """
-    print('The sizes in this function go from:', sizes.min(), 'to', sizes.max())
     # Size integral: integral of n(a) * m(a) da
     sizes_integrand = (4 * np.pi / 3) * grain_density * sizes**3 * size_distribution_function(sizes, size_dist_params_dic)
     mean_grain_mass = scipy.integrate.trapezoid(sizes_integrand, sizes)
@@ -1525,7 +1512,6 @@ def calculate_normalization_density_jacobian_sublimation(stargrain_obj,
     Z_max_r  : (n_r,) per-radius vertical truncation
     zeta     : (N_zeta,) normalized coordinate in [-1, 1]
     """
-    print('The sizes in this function go from:', sizes.min(), 'to', sizes.max())
     # Size integral: integral of n(a) * m(a) da
     sizes_integrand = (4 * np.pi / 3) * grain_density * sizes**3 * size_distribution_function(sizes, size_dist_params_dic)
     # sizes_integrand = sizes_integrand[:, np.newaxis, np.newaxis]  # (n_sizes, 1, 1) for broadcasting
@@ -1695,7 +1681,6 @@ def calculate_normalization_density_jacobian_sublimation_fast(
        sublimation mask is identical.
     3. Chunks the size dimension to bound peak memory.
     """
-    print('The sizes in this function go from:', sizes.min(), 'to', sizes.max())
     # ── size integrand: m(a) × n(a) ──────────────────────────────────
     sizes_integrand = ((4 * np.pi / 3) * grain_density * sizes**3
                        * size_distribution_function(sizes, size_dist_params_dic))

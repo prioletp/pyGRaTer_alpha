@@ -69,17 +69,18 @@ class Grain:
         
         redo_Q = kwargs.get('redo_Q', False)
         composition = kwargs.get('composition', 'aC_ACAR')
+        if 'composition' not in kwargs:
+            print(f"No composition specified, using default composition: '{composition}'")
         
         print("="*60)
         print("CREATING GRAIN OBJECT")
         print("="*60)
         self.developper_params_path =  Path(__file__).parent / 'parameters' / "developper_params.yaml"
-        print(f'General parameters file: {self.developper_params_path}')  # updated
+        print(f'Developper parameters file: {self.developper_params_path}')  # updated
         with open(self.developper_params_path, 'r') as dev_params_yaml_file:
             self.dev_params = yaml.load(dev_params_yaml_file, Loader=yaml.FullLoader)
             
         self.general_params =  {**self.dev_params, **kwargs}
-        # self._pretty_print(':', self.general_params)  # updated
 
         self.grain_optical_properties_path = data_path / 'optical_properties'       
         
@@ -301,12 +302,12 @@ class Star:
         to the specified photometric band and apparent magnitude.
         Available stars are listed in star_data/stars_main_properties.txt
         """
-        print("="*60)
-        print("CREATING STAR OBJECT")
-        print("="*60)
+        self.talk = kwargs.get('talk', True)
+
         star_name = kwargs.get('star_name', 'bPic')
         N_waves = kwargs.get('N_waves', 2000)
         bin_ratio = kwargs.get('bin_ratio', 20)
+        
 
         
         data_path = DataPathConfig.get_data_path()
@@ -314,25 +315,28 @@ class Star:
 
         self.star_name = star_name
         self.star_properties_path = data_path / 'star_data' / "stars_main_properties.txt"
-        print(f"Star properties file: {self.star_properties_path}")  # prettier path print
         self.star_properties = self.load_star_properties()
         
-        # Pretty print loaded properties (dict-like)
-        print(f"Star name: '{self.star_name}'")
-        print('The temperature is {:.1f} K'.format(self.temp))
-        print('The logg is {:.2f} cgs'.format(self.logg))
-        print('The radius is {:.2f} R_sun'.format(self.radius))
-        print('The distance is {:.2f} pc'.format(self.distance))
-        print('The spectral type is {}'.format(self.spectral_type))
-        print('The normalization band is {}'.format(self.normband))
-        print('The apparent magnitude in {} band is {:.2f} mag'.format(self.normband, self.apmag))
-        print(f'The stellar spectrum is binned by a factor of {bin_ratio}')
+        if self.talk:
+            print("="*60)
+            print("CREATING STAR OBJECT")
+            print("="*60)
+            print(f"Star properties file: {self.star_properties_path}")  # prettier path print
+            print(f"Star name: '{self.star_name}'")
+            print('The temperature is {:.1f} K'.format(self.temp))
+            print('The logg is {:.2f} cgs'.format(self.logg))
+            print('The radius is {:.2f} R_sun'.format(self.radius))
+            print('The distance is {:.2f} pc'.format(self.distance))
+            print('The spectral type is {}'.format(self.spectral_type))
+            print('The normalization band is {}'.format(self.normband))
+            print('The apparent magnitude in {} band is {:.2f} mag'.format(self.normband, self.apmag))
+            print(f'The stellar spectrum is binned by a factor of {bin_ratio}')
 
         # self.get_spectra(N_waves, waves=None, min_wave=None, max_wave=None, norm=True)
         # self.get_spectra_GRATER()
 
         self.get_spectra(bin_ratio=bin_ratio, norm=True)
-        self.get_spectral_full(norm=True)
+        # self.get_spectral_full(norm=True)
 
     def read_star_fits(self, fitsname):
         """Read Q values from FITS file written by IDL save_Q_as_fits procedure."""
@@ -345,17 +349,6 @@ class Star:
     def load_star_properties(self) :
         """Load star properties from external file and create star dictionnary"""
         
-        # Upload star properties
-        
-        # prop = np.genfromtxt(self.star_properties_path, dtype=None, encoding='utf-8', comments='#')   
-        # # print(prop.shape)
-        
-        # # Build the star names dictionnary
-        # print('###########################')
-        # dico = {} # Known stars, and their line in stars_main_properties.txt
-        # for i in range(len(prop)) :
-        #     print(prop[i,:])
-        # print('###########################')
 
         # New section: create column dictionary
         with open(self.star_properties_path, 'r') as f:
@@ -377,10 +370,7 @@ class Star:
         
         star_properties_dic = {}
         for key in col_dict:
-            # removed noisy per-key print, keep building dict
             star_properties_dic[key] = col_dict[key][index_for_star[0]]
-        # Pretty print the dictionary
-        # self._pretty_print("Star properties dictionary:", dict(star_properties_dic))
         
         self.distance = float(star_properties_dic['dist'])  # in pc
         self.temp = float(star_properties_dic['temp'])      # in K
@@ -568,7 +558,8 @@ class Star:
                         np.min(abs(self.temp-spec[:,0]))]
         specFin = specTemp[abs(self.logg-specTemp[:,1])==
                         np.min(abs(self.logg-specTemp[:,1]))]
-        print('The closest spectrum in the grid has T_eff = {:.1f} K and log(g) = {:.1f} cgs'.format(specFin[0][0], specFin[0][1]))
+        if self.talk:
+            print('The closest spectrum in the grid has T_eff = {:.1f} K and log(g) = {:.1f} cgs'.format(specFin[0][0], specFin[0][1]))
 
         if abs(self.temp-specFin[0][0]) > 100 :
             print('NB : Stellar temperature is too far')
@@ -588,9 +579,9 @@ class Star:
         lam, idx2 = np.unique(lam[idx_sort_waves],return_index=True)  # Suppress the twins
         Fnu = Fnu[idx2]
         if norm :
-            print('Normalizing in the full spectrum')
+            if self.talk:
+                print('Normalizing in the full spectrum')
             fluxV, V0pt = utl.flux_in_band(band, lam, Fnu)
-            print('AQUI', V0pt, fluxV)
             Fnu = Fnu/fluxV * 10.**(-Normmag/2.5) * V0pt # Flux seen from earth
         else :
             Fnu = Fnu*(self.radius/(self.distance*cst.pc))**2
@@ -645,13 +636,20 @@ class Star:
         self.lum = Lstar
         # print(f"Stellar luminosity: {self.lum:.2f} L_sun")
         if norm :
-            print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and normalized.')
-            print(f"Normalized in {band}-band to {Normmag} mag")
-            print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+            if self.talk:
+                print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and normalized.')
+                print(f"Normalized in {band}-band to {Normmag} mag")
+                print(f"The stellar luminosity is {self.lum:.2f} L_sun")
         else:
-            print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and not normalized.')   
-            print(f"The stellar luminosity is {self.lum:.2f} L_sun")
+            if self.talk:
+                print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and not normalized.')   
+                print(f"The stellar luminosity is {self.lum:.2f} L_sun")
         return None
+    
+    def get_flux_in_band(self, band):
+        flux_band, V0pt = utl.flux_in_band(band, self.waves, self.flux)
+        return flux_band
+    
     def plot_quantile_bins(self, x, nbins=20, show_centers=True):
         """
         Visualize equal-population (quantile) bins.
@@ -706,8 +704,7 @@ class Star:
         
         return bins
 
-    def interpolate_spectra(self, waves):
-        return None
+
     # def get_spectra(self, N_waves=None, waves=None, min_wave=None, max_wave=None, norm=True): #,band,Normmag,waveRef,norm=True) :
     #     '''Find the closest spectra in NextGen
     #     Normalize it by the specified band and magnitude
@@ -802,9 +799,7 @@ class Star:
     #     else:
     #         print(f'Stellar spectrum loaded from {self.waves[0]} to {self.waves[-1]} µm and not normalized.')   
     #         print(f"The stellar luminosity is {self.lum:.2f} L_sun")
-    def get_flux_in_band(self, band):
-        flux_band, V0pt = utl.flux_in_band(band, self.waves, self.flux)
-        return flux_band
+
     
 class GrainStar:
     def __init__(self, grain, star, init_thermal_distance=True, N_temp=300, redo_therm_dist=False, talk=True):
