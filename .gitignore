@@ -1,6 +1,7 @@
 # Data folder (users download separately)
 data/
 logs/*
+pyGrater.egg-info/
 #Other caches
 .spyproject/
 .venv/
