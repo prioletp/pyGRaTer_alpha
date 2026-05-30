@@ -35,6 +35,14 @@ from pyGrater.phase_functions import isotropic
 import astropy.constants as cst
 from scipy.integrate import trapezoid
 
+def _trapezoid_weights(x):
+    """Pre-compute composite-trapezoid quadrature weights for a 1-D grid."""
+    dx = np.diff(x)
+    w = np.empty_like(x)
+    w[0]    = dx[0]  / 2.0
+    w[-1]   = dx[-1] / 2.0
+    w[1:-1] = (dx[:-1] + dx[1:]) / 2.0
+    return w
 
 # ── optional numba acceleration ──────────────────────────────────────────
 try:
@@ -89,14 +97,6 @@ except ImportError:
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
-def _trapezoid_weights(x):
-    """Pre-compute composite-trapezoid quadrature weights for a 1-D grid."""
-    dx = np.diff(x)
-    w = np.empty_like(x)
-    w[0]    = dx[0]  / 2.0
-    w[-1]   = dx[-1] / 2.0
-    w[1:-1] = (dx[:-1] + dx[1:]) / 2.0
-    return w
 
 
 

@@ -12,6 +12,66 @@ import matplotlib.pyplot as plt
 import time
 from tqdm import tqdm
 
+# ── optional numba acceleration ──────────────────────────────────────────
+try:
+    from numba import njit, prange
+
+    @njit(parallel=True, cache=True)
+    def _planck_thermal_fused(wav_cm, log5_lam, c1Cbb, lam5,
+                              temperatures, temp_ok, coeff, inv_d2):
+        """Fully fused thermal flux: Planck + size-integral, no 3-D intermediates."""
+        N_wav = wav_cm.shape[0]
+        N_s, N_d = temperatures.shape
+        flux = np.empty((N_wav, N_d))
+        for w in prange(N_wav):
+            lc = wav_cm[w]
+            ll = log5_lam[w]
+            cc = c1Cbb[w]
+            l5 = lam5[w]
+            for d in range(N_d):
+                acc = 0.0
+                for s in range(N_s):
+                    if temp_ok[s, d]:
+                        x = 1.43983 / (lc * temperatures[s, d]) + ll
+                        if x > 709.0:
+                            continue  # bb ≈ 0, skip
+                        acc += cc / (np.exp(x) - l5) * coeff[s, w]
+                flux[w, d] = acc * inv_d2
+        return flux
+
+    _NUMBA_AVAILABLE = True
+
+    @njit(parallel=True, cache=True)
+    def _interp_zeta_integral(flux, idx, w_frac, w1_frac, ib,
+                              geo_zw, N_r, N_zeta):
+        """Fused interpolation + ζ-integration for all wavelengths at once."""
+        N_wav = flux.shape[0]
+        out = np.empty((N_wav, N_r))
+        for i_w in prange(N_wav):
+            for i_r in range(N_r):
+                acc = 0.0
+                base = i_r * N_zeta
+                for i_z in range(N_zeta):
+                    k = base + i_z
+                    if ib[k]:
+                        val = (flux[i_w, idx[k]] * w1_frac[k]
+                               + flux[i_w, idx[k] + 1] * w_frac[k])
+                        acc += val * geo_zw[k]
+                out[i_w, i_r] = acc
+        return out
+except ImportError:
+    _NUMBA_AVAILABLE = False
+
+def _trapezoid_weights(x):
+    """Pre-compute composite-trapezoid quadrature weights for a 1-D grid."""
+    dx = np.diff(x)
+    w = np.empty_like(x)
+    w[0]    = dx[0]  / 2.0
+    w[-1]   = dx[-1] / 2.0
+    w[1:-1] = (dx[:-1] + dx[1:]) / 2.0
+    return w
+
+
 class Fluxes:
     def __init__(self, grain, star, wavelengths_for_calc, size_distribution_function, scattering_phase_function, N_temp=600, N_distances=400, dist_max_input=1000, N_scattering_angles=500):
         

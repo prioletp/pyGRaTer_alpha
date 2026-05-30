@@ -2,6 +2,8 @@
 data/
 logs/*
 pyGrater.egg-info/
+docs/
+
 #Other caches
 .spyproject/
 .venv/
@@ -53,6 +55,14 @@ coverage.xml
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Benchmark outputs
+*.prof
+benchmark_*.png
+
+# Large binary data (downloaded separately via OSF)
+*.npz
+*.npy
 
 # IPython
 profile_default/

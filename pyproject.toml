@@ -1,27 +1,89 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyGrater"
-version = "0.0.1"
+version = "0.1.0"
 description = "Debris disk modeling and radiative transfer"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [
+    {name = "P. Priolet", email = "philippe.priolet@univ-grenoble-alpes.fr"},
+]
+keywords = [
+    "debris disk",
+    "radiative transfer",
+    "astronomy",
+    "circumstellar disk",
+    "grain temperature",
+    "SED",
+    "scattered light",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 dependencies = [
-    "numpy>=1.20",
+    "numpy>=1.21",
     "scipy>=1.7",
-    "matplotlib>=3.3",
-    "astropy>=4.0",
+    "matplotlib>=3.4",
+    "astropy>=5.0",
     "tqdm>=4.60",
-    "pyyaml>=5.0"
+    "pyyaml>=5.0",
 ]
 
+[project.urls]
+Homepage      = "https://github.com/prioletp/pyGRaTer_alpha"
+Documentation = "https://osf.io/mqkyf/overview"
+"Bug Tracker" = "https://github.com/prioletp/pyGRaTer_alpha/issues"
+
 [project.optional-dependencies]
-dev = ["pytest>=6.0", "black", "flake8", "mypy"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "black",
+    "flake8",
+    "mypy",
+    "psutil",       # memory tracking in benchmarks
+]
+docs = [
+    "sphinx>=7.0",
+    "furo",
+    "myst-parser",
+    "sphinx-autoapi",
+    "numpydoc",
+]
 
 [project.scripts]
 pygrater-setup = "pyGrater.config.setup_cli:main"
 
-[tool.setuptools]
-packages = ["pyGrater"]
+# ── package discovery ────────────────────────────────────────────────────────
+# finds pyGrater, pyGrater.config, pyGrater.fitters, pyGrater.parameters
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pyGrater*"]
+exclude = ["pyGrater.tests*"]   # don't ship benchmark/test files in the wheel
+
+# ── tool config ──────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "-v"
+
+[tool.black]
+line-length    = 100
+target-version = ["py39"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
