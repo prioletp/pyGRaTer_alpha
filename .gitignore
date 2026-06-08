@@ -60,6 +60,10 @@ coverage.xml
 *.prof
 benchmark_*.png
 
+# Experimental optimized code (WIP — not ready for public release)
+pyGrater/tests/optimized_*.py
+pyGrater/tests/benchmark_optimized.py
+
 # Large binary data (downloaded separately via OSF)
 *.npz
 *.npy
