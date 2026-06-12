@@ -422,7 +422,7 @@ def calc_Q_IDL(
     return lambda_grid, gsize, Qpr, Qabs, Qsca
 
 
-def calc_Q(N_sizes, size_min, size_max, N_waves, N_waves_undersampled, waves_min, waves_max, grain_composition_name, optical_parameters_path, path_Q, weights, talk=True):
+def calc_Q(N_sizes, size_min, size_max, N_waves, N_waves_undersampled, waves_min, waves_max, grain_composition_name, optical_parameters_paths, path_Q, weights, talk=True):
     """
     Calculate the scattering efficiency Q for grains.
     """
@@ -441,25 +441,11 @@ def calc_Q(N_sizes, size_min, size_max, N_waves, N_waves_undersampled, waves_min
 
     if not os.path.exists(path_Q):
         os.makedirs(path_Q)
-    # Check if the composition has per or per1 and per2 configurations.
-    per_bool = os.path.exists(optical_parameters_path + '/' + f"{grain_composition_name}_per.txt")
-    per1_per2_bool = os.path.exists(optical_parameters_path + '/' + f"{grain_composition_name}_par.txt") and os.path.exists(optical_parameters_path + '/' + f"{grain_composition_name}_per1.txt") and os.path.exists(optical_parameters_path + '/' + f"{grain_composition_name}_per2.txt")
-    if per_bool:
-        indpara = np.loadtxt(optical_parameters_path + '/' + f"{grain_composition_name}_par.txt", skiprows=3)
-        indper1 = np.loadtxt(optical_parameters_path + '/' + f"{grain_composition_name}_per.txt", skiprows=3)
-        indper2 = indper1
-    
-    elif per1_per2_bool:
-        indpara = np.loadtxt(optical_parameters_path + '/' + f"{grain_composition_name}_par.txt", skiprows=3)
-        indper1 = np.loadtxt(optical_parameters_path + '/' + f"{grain_composition_name}_per1.txt", skiprows=3)
-        indper2 = np.loadtxt(optical_parameters_path + '/' + f"{grain_composition_name}_per2.txt", skiprows=3)
-    
-    elif not per1_per2_bool and not per_bool and os.path.exists(optical_parameters_path + '/' + f"{grain_composition_name}.txt"):
-        indpara = np.loadtxt(optical_parameters_path + '/' + f"{grain_composition_name}.txt", skiprows=3)
-        indper1 = indpara
-        indper2 = indpara
-    else:
-        print('Houston, we have a problem!')
+
+    indpara = np.loadtxt(optical_parameters_paths[0], skiprows=3)
+    indper1 = np.loadtxt(optical_parameters_paths[1], skiprows=3)
+    indper2 = np.loadtxt(optical_parameters_paths[2], skiprows=3)
+
     
     
     # If wavelenght coverage is different between para-per1-per2

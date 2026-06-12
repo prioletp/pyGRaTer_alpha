@@ -109,3 +109,4 @@ venv.bak/
 *.tmp
 *.bak
 *.log
+pyGrater/__pycache__/stargrains.cpython-313.pyc

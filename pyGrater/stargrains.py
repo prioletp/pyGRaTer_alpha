@@ -69,9 +69,9 @@ class Grain:
 
                 
         redo_Q = kwargs.get('redo_Q', False)
-        composition = kwargs.get('composition', 'aC_ACAR')
-        if 'composition' not in kwargs:
-            print(f"No composition specified, using default composition: '{composition}'")
+        composition = kwargs.get('composition', None)
+        if composition is None:
+            print(f"No composition specified, PROBLEM'")
         
         
         print("="*60)
@@ -141,11 +141,13 @@ class Grain:
             N_waves_undersampled = self.general_params['N_waves_undersampled']
             waves_min = self.general_params['waves_min']
             waves_max = self.general_params['waves_max']
-            optical_parameters_path = str(self.grain_optical_properties_path)
+            optical_parameters_folder = str(self.grain_optical_properties_path)
             path_Q = self.grain_efficiencies_path
             weights = self.weights
-                    
-            output_dic = utl.calc_Q(N_sizes, size_min, size_max, N_waves, N_waves_undersampled, waves_min, waves_max, self.grain_composition_name, optical_parameters_path, path_Q, weights, talk=True)
+            optical_parameters_paths = [f"{optical_parameters_folder}/{self.grain_properties['File_par']}",
+                                        f"{optical_parameters_folder}/{self.grain_properties['File_per1']}",
+                                        f"{optical_parameters_folder}/{self.grain_properties['File_per2']}"]
+            output_dic = utl.calc_Q(N_sizes, size_min, size_max, N_waves, N_waves_undersampled, waves_min, waves_max, self.grain_composition_name, optical_parameters_paths, path_Q, weights, talk=True)
         
         return output_dic
     def plot_Q(self, min_wave=None, max_wave=None, min_size=None, max_size=None):

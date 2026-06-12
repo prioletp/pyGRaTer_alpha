@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize, differential_evolution, dual_annealing
 
 from pyGrater.stargrains import Grain, Star
-from pyGrater.SED_efficient_opus import SED
+from pyGrater.SED import SED
 
 # Parameters explored in log10 space by default
 LOG_SPACE_PARAMS = {'M_tot', 'a_min', 'r0', 'A_norm'}
