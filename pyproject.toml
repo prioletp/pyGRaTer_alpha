@@ -75,6 +75,9 @@ where = ["."]
 include = ["pyGrater*"]
 exclude = ["pyGrater.tests*"]   # don't ship benchmark/test files in the wheel
 
+[tool.setuptools.package-data]
+"pyGrater" = ["parameters/*.yaml"]
+
 # ── tool config ──────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 testpaths = ["tests"]
