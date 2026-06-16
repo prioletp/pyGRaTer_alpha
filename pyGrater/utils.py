@@ -1,5 +1,6 @@
 #%%
 import numpy as np
+import scipy.integrate
 import scipy.interpolate
 import scipy.ndimage
 from scipy.integrate import quad
@@ -661,13 +662,13 @@ def optimal_sampling_IDL(x, y, n):
             slope = np.abs(np.gradient(y[:, i], x))
 
         # normalized slope <-> probability
-        integral_slope = np.trapz(slope, x)
+        integral_slope = scipy.integrate.trapezoid(slope, x)
         proba = slope / integral_slope
 
         proba_tot += proba
 
     # Renormalize probability
-    proba_tot /= np.trapz(proba_tot, x)
+    proba_tot /= scipy.integrate.trapezoid(proba_tot, x)
 
     # Cumulative integral (IDL integral(...,/accum))
     dx = np.diff(x)

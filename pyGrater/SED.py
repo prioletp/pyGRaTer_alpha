@@ -335,7 +335,6 @@ class SED:
             print('============================\n')
 
         self.timings = timings
-
         if keep_separate_fluxes:
             self.SED_therm = SED_therm
             self.SED_sca   = SED_sca

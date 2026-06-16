@@ -1,5 +1,5 @@
 #%%
-from pyGrater import stargrains as stgr
+from pyGrater import Star, Grain, Temperature
 from pyGrater import utils as utl
 import numpy as np
 from astropy import constants as cst
@@ -81,7 +81,7 @@ class Fluxes:
         self.Q_sizes = grain.Qabs_sizes
         self.Q_waves = grain.Qabs_waves
         
-        self.stargrain_obj = stgr.GrainStar(grain, star, N_temp=N_temp)
+        self.stargrain_obj = Temperature(grain, star, N_temp=N_temp)
         self.stellar_spectrum_wavelengths = star.waves
         self.stellar_spectrum_fluxes = star.flux
         
@@ -424,104 +424,4 @@ class FastFluxes(Fluxes):
                                         size_distribution_args)
         return thermal, scattered
 
-# if __name__=='__main__':
-#     import matplotlib.pyplot as plt
-#     from pyGrater.size_distributions import power_law_distribution
-#     from pyGrater.phase_functions import HenveyGreenstein
-    
-#     grain = stgr.Grain(redo_Q=False)
-#     star = stgr.Star('bPic')
-#     wavelengths_for_calc = np.array([0.55, 1.65, 10.257, 60, 160, 850])
-#     rad_trsf = Fluxes(grain, star, wavelengths_for_calc, power_law_distribution, HenveyGreenstein)
-    
-#     #%%
-#     size_distribution_args = {'a_min': 0.01*1e-6, 'a_max': 3000*1e-6, 'kappa': 3.5, 'N_sizes_integral': 400}
-#     flux_scattered = rad_trsf.scattered_flux(size_distribution_args=size_distribution_args, phase_function_args={'g': 0.5})
 
-#%%
-if __name__=='__main__':
-    from pyGrater.size_distributions import power_law_distribution
-    from pyGrater.phase_functions import HenveyGreenstein
-    grain = stgr.Grain(redo_Q=False)
-    grain.plot_Q(min_size=None, max_size=None, min_wave=None, max_wave=None)
-    star = stgr.Star('bPic')
-    
-    stargrain = stgr.GrainStar(grain, star, N_temp=300)
-    distances_for_plot_T = np.linspace(0.01, 10, 500)
-    stargrain.get_temperature(distances_for_plot_T)
-    #%%
-    stargrain.plot_temperatures(min_size=None, max_size=None, min_dist=None, max_dist=0.5)
-    
-    #%%
-    wavelengths_for_calc = np.array([0.55, 1.65, 10.257, 60, 160, 850])#np.array(np.linspace(0.55, 855, 6))#np.linspace(3.2,3.6, 17)
-
-    rad_trsf = Fluxes(grain, star, wavelengths_for_calc, power_law_distribution, HenveyGreenstein)
-    #%%
-    #%%
-    t1 = time.time()
-    properties = {'a_min': 0.01*1e-6, 'a_max': 3000*1e-6, 'kappa': 3.5, 'N_sizes_integral': 400, 'g': 0.5}
-    flux_scattered = rad_trsf.scattered_flux(properties, properties)
-    print('Time to get flux: ' + format(time.time()-t1, '0.2f') + ' seconds.')
-    
-    #%%
-    # Create color map based on wavelengths
-    colors = plt.cm.viridis(np.linspace(0, 1, len(wavelengths_for_calc)))
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for i in range(len(wavelengths_for_calc)):
-        ax.loglog(rad_trsf.distances_for_flux, flux_scattered[i,:,0], 
-                 color=colors[i], 
-                 label=f'{wavelengths_for_calc[i]:.2f} µm')
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title='Wavelengths')
-    plt.tight_layout()
-
-    t1 = time.time()
-    plt.title('Scattered flux')
-    #%%
-    t1 = time.time()
-    flux_thermal = rad_trsf.thermal_flux(properties)
-    print('Time to get flux: ' + format(time.time()-t1, '0.2f') + ' seconds.')
-    
-    #%%
-    fig, ax = plt.subplots(figsize=(10, 10))
-    for i in range(len(wavelengths_for_calc)):
-        ax.loglog(rad_trsf.distances_for_flux, flux_thermal[i,:], 
-                 color=colors[i], 
-                 label=f'{wavelengths_for_calc[i]:.2f} µm')
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title='Wavelengths')
-    plt.tight_layout()
-    plt.title('Scattered flux')
-    #%%
-    # Calculate number of rows needed
-    n_plots = len(wavelengths_for_calc)
-    n_cols = 3
-    n_rows = (n_plots + n_cols - 1) // n_cols  # Ceiling division
-
-    # Create figure with subplots
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
-    axs = axs.flatten()  # Flatten array for easier indexing
-
-    # Plot each wavelength
-    for i in range(n_plots):
-        coeff_th = utl.fit_power_law(rad_trsf.distances_for_flux[rad_trsf.distances_for_flux>0.1], 
-                                flux_thermal[i,:][rad_trsf.distances_for_flux>0.1])
-        coeff_sc = utl.fit_power_law(rad_trsf.distances_for_flux[rad_trsf.distances_for_flux>0.1], 
-                                flux_scattered[i,:,0][rad_trsf.distances_for_flux>0.1])
-        
-        axs[i].loglog(rad_trsf.distances_for_flux, flux_scattered[i,:,0], 
-                      label=f'Scattered ($\\propto r^{{{coeff_sc:.2f}}}$)', c='Blue')
-        axs[i].loglog(rad_trsf.distances_for_flux, flux_thermal[i,:], 
-                      label=f'Thermal ($\\propto r^{{{coeff_th:.2f}}}$)', c='red')
-        axs[i].legend()
-        axs[i].set_title(r'$\lambda =$' + format(wavelengths_for_calc[i], '0.2f') + ' microns')
-        axs[i].set_xlabel('Distance [au]')
-        axs[i].set_ylabel('Flux [arbitrary units]')
-        
-    # Remove empty subplots if any
-    for i in range(n_plots, len(axs)):
-        fig.delaxes(axs[i])
-        
-    plt.tight_layout()
-    plt.savefig('fluxes_vs_distance.png', dpi=300)
-    plt.show()
-
-# %%

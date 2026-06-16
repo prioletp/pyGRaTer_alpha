@@ -4,8 +4,16 @@
     
     
 # )
-from pyGrater.config.paths import DataPathConfig
+from pyGrater.config.logging_config import redirect_print_to_log
+redirect_print_to_log()
 
+from pyGrater.stargrains import Grain, Star
+
+from pyGrater.temperatures import Temperature
+from pyGrater.fluxes import Fluxes
+from pyGrater.config.paths import DataPathConfig
+from pyGrater.SED import SED
+from pyGrater.image import Image
 def set_data_path(path, persistent=True):
     """
     Configure the path to pyGrater data folder.

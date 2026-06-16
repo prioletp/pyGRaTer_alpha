@@ -1,10 +1,11 @@
 #%%
 from pyGrater.utils import cylinder, hyperboloid_2_sheets, calculate_normalization_density, calculate_normalization_density_jacobian_sublimation_fast as calculate_normalization_density_jacobian_sublimation
-from pyGrater.fluxes import Fluxes
+from pyGrater import Fluxes
 import time
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
+import scipy.integrate
 from scipy.interpolate import RegularGridInterpolator
 import astropy.constants as cst
 from tqdm import tqdm
@@ -237,21 +238,21 @@ class Image:
             if not keep_separate_fluxes:
                 limage = (scattered_emissivity + thermal_vals) * density_vals
                 image = np.zeros([nx, ny])
-                image[mask] = np.trapz(limage, x=ln, axis=0) * dl[mask] * pixAU**2
+                image[mask] = scipy.integrate.trapezoid(limage, x=ln, axis=0) * dl[mask] * pixAU**2
                 image = np.flip(image.T, axis=0) * norm_factor
                 images[i, :, :] = image
             else:
                 # Scattered component
                 limage_sca = scattered_emissivity * density_vals
                 image_sca = np.zeros([nx, ny])
-                image_sca[mask] = np.trapz(limage_sca, x=ln, axis=0) * dl[mask] * pixAU**2
+                image_sca[mask] = scipy.integrate.trapezoid(limage_sca, x=ln, axis=0) * dl[mask] * pixAU**2
                 image_sca = np.flip(image_sca.T, axis=0) * norm_factor
                 images_sca[i, :, :] = image_sca
                 
                 # Thermal component
                 limage_therm = thermal_vals * density_vals
                 image_therm = np.zeros([nx, ny])
-                image_therm[mask] = np.trapz(limage_therm, x=ln, axis=0) * dl[mask] * pixAU**2
+                image_therm[mask] = scipy.integrate.trapezoid(limage_therm, x=ln, axis=0) * dl[mask] * pixAU**2
                 image_therm = np.flip(image_therm.T, axis=0) * norm_factor
                 images_therm[i, :, :] = image_therm
             

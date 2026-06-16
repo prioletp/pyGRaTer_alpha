@@ -1,7 +1,75 @@
 #%%
 import logging
+import sys
+import atexit
 from pathlib import Path
 from datetime import datetime
+
+
+class TeeStream:
+    """Writes to both the original stream and a log file.
+
+    Used to tee sys.stdout so that every print() call also lands
+    in the pyGrater log file, regardless of any verbose/talk flags.
+    """
+
+    def __init__(self, original_stream, log_file_handle):
+        self._original = original_stream
+        self._log = log_file_handle
+
+    def write(self, text):
+        self._original.write(text)
+        self._log.write(text)
+        self._log.flush()
+
+    def flush(self):
+        self._original.flush()
+        self._log.flush()
+
+    def isatty(self):
+        return self._original.isatty()
+
+    def fileno(self):
+        return self._original.fileno()
+
+
+def redirect_print_to_log(log_dir=None):
+    """Redirect sys.stdout so every print() call also writes to a log file.
+
+    Called automatically when pyGrater is imported.  You can call it
+    manually to point at a different directory.
+
+    Parameters
+    ----------
+    log_dir : str or Path, optional
+        Directory for log files (default: ``./logs/`` relative to cwd).
+
+    Returns
+    -------
+    Path or None
+        Path to the active log file, or *None* if already redirected.
+    """
+    if isinstance(sys.stdout, TeeStream):
+        return None  # already active – do not open a second file
+
+    if log_dir is None:
+        log_dir = Path.cwd() / "logs"
+    else:
+        log_dir = Path(log_dir)
+
+    log_dir.mkdir(exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"pyGrater_{timestamp}.log"
+
+    fh = open(log_file, "a", encoding="utf-8")
+    sys.stdout = TeeStream(sys.stdout, fh)
+
+    # Restore original stdout and close file on interpreter exit.
+    atexit.register(lambda: setattr(sys, "stdout", sys.stdout._original))
+    atexit.register(fh.close)
+
+    return log_file
 
 class CustomFormatter(logging.Formatter):
 

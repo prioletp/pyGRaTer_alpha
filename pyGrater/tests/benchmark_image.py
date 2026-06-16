@@ -108,6 +108,7 @@ def _run_image_timed(img_obj, params):
     FOV_AU = params.get("FOV_AU", 400.0)
 
     import scipy
+    import scipy.integrate
     import astropy.constants as cst
     from scipy.interpolate import RegularGridInterpolator
     from pyGrater.utils import (
@@ -254,8 +255,8 @@ def _run_image_timed(img_obj, params):
         img_sca   = np.zeros([nx, ny])
         img_therm = np.zeros([nx, ny])
 
-        img_sca[mask]   = np.trapz(limage_sca,   x=ln, axis=0) * dl[mask] * pixAU ** 2
-        img_therm[mask] = np.trapz(limage_therm, x=ln, axis=0) * dl[mask] * pixAU ** 2
+        img_sca[mask]   = scipy.integrate.trapezoid(limage_sca,   x=ln, axis=0) * dl[mask] * pixAU ** 2
+        img_therm[mask] = scipy.integrate.trapezoid(limage_therm, x=ln, axis=0) * dl[mask] * pixAU ** 2
 
         images_sca[i]   = np.flip(img_sca.T,   axis=0) * norm_factor
         images_therm[i] = np.flip(img_therm.T, axis=0) * norm_factor

@@ -98,7 +98,7 @@ MyStar 42.0 6500 1.3 1.2 4.1 F5 V 6.2 15.0 nan nan nan nan nan nan nan
 Then load it in Python:
 
 ```python
-from pyGrater.stargrains import Star
+from pyGrater import Star
 
 star = Star(star_name="MyStar")
 print(star.temp, star.distance)
@@ -117,6 +117,52 @@ Notebook examples are available in the examples directory, including:
 - grain temperatures,
 - flux profiles,
 - SED and image generation.
+
+---
+
+## Logging
+
+Every `print()` call made anywhere in pyGrater is automatically mirrored to a
+timestamped log file whenever the package is imported.
+
+### Default log location
+
+Log files are written to a `logs/` folder **inside the current working
+directory** at the moment `import pyGrater` is executed:
+
+```
+<cwd>/logs/pyGrater_YYYYMMDD_HHMMSS.log
+```
+
+So if you launch Python from `/home/user/my_project/`, the log appears at:
+
+```
+/home/user/my_project/logs/pyGrater_20260616_142301.log
+```
+
+### Changing the log directory
+
+Pass a custom path to `redirect_print_to_log()` **before** (or right after)
+importing pyGrater:
+
+```python
+import pyGrater
+pyGrater.redirect_print_to_log("/path/to/my/logs")
+```
+
+If pyGrater has already been imported (e.g. in a Jupyter notebook that was not
+restarted), call it again with the new path — the previous log file is closed
+and a fresh one is opened at the new location.
+
+### Disabling log file output
+
+To suppress file logging for the current session, restore the original stdout:
+
+```python
+import sys
+sys.stdout = sys.stdout._original   # unwrap the TeeStream
+```
+
 
 ## Troubleshooting
 
