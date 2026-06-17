@@ -8,7 +8,8 @@ from pyGrater.config.logging_config import redirect_print_to_log
 redirect_print_to_log()
 
 from pyGrater.stargrains import Grain, Star
-
+from pyGrater.add_materials import add_material
+from pyGrater.add_stars import add_star
 from pyGrater.temperatures import Temperature
 from pyGrater.fluxes import Fluxes
 from pyGrater.config.paths import DataPathConfig

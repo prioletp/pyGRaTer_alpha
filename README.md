@@ -58,55 +58,144 @@ Notes:
 - If no data path is configured, pyGrater raises a FileNotFoundError with setup instructions.
 
 
-## How to Add a New Star
+## How to Use a Star
 
-To add a star, you must edit the star catalog text file in the data directory:
+### Option 1: load from the catalog
 
-data/star_data/stars_main_properties.txt
-
-### Important format rules
-
-1. Keep the existing header columns unchanged.
-2. Add one new row with whitespace-separated values.
-3. Do not use spaces inside the star name token.
-4. Use nan for unknown numeric values.
-
-Expected columns are:
-
-star dist temp rad mass logg spt band apmag vsini mdot vw tcoro B0 r0 tilt per
-
-Column units used by pyGrater:
-
-- dist in pc
-- temp in K
-- rad in solar radii
-- mass in solar masses
-- logg in cgs
-- apmag in magnitudes (for the chosen band)
-- vsini in km/s
-- mdot in units of 1e-14 solar masses/year
-- vw in m/s
-- tcoro in K
-- B0, r0, tilt, per are read as numeric values and can be set to nan if unused
-
-### Example row
-
-```text
-MyStar 42.0 6500 1.3 1.2 4.1 F5 V 6.2 15.0 nan nan nan nan nan nan nan
-```
-
-Then load it in Python:
+The simplest way is to pass the star's name — pyGrater looks it up in
+`data/star_data/stars_main_properties.txt`:
 
 ```python
 from pyGrater import Star
 
-star = Star(star_name="MyStar")
+star = Star(star_name="bPic")
 print(star.temp, star.distance)
 ```
 
-If the name does not match exactly, pyGrater raises:
+If the name does not match exactly, pyGrater raises `ValueError: Unknown star: <name>`.
 
-- ValueError: Unknown star: <name>
+### Option 2: define a star inline (no catalog entry needed)
+
+You can create a `Star` object entirely from keyword arguments, without
+adding any row to the catalog.  The required kwargs are:
+
+| kwarg  | unit          | description                        |
+|--------|---------------|------------------------------------|
+| `dist` | pc            | distance to the star               |
+| `temp` | K             | effective temperature              |
+| `rad`  | R☉            | stellar radius                     |
+| `logg` | cgs           | surface gravity                    |
+| `band` | —             | photometric band for normalization |
+| `apmag`| mag           | apparent magnitude in that band    |
+| `spt`  | —             | spectral type *(optional)*         |
+
+```python
+from pyGrater import Star
+
+star = Star(
+    dist  = 19.3,    # pc
+    temp  = 8052,    # K
+    rad   = 1.8,     # R_sun
+    logg  = 4.1,     # cgs
+    band  = "V",
+    apmag = 3.86,    # mag
+    spt   = "A6V",   # optional
+)
+print(star.temp, star.lum)
+```
+
+This is useful for quick tests, one-off targets, or stars not yet in the catalog.
+
+### Adding a new star to the catalog (permanent)
+
+To make a star permanently available by name, use the `add_star()` helper:
+
+```python
+from pyGrater.add_stars import add_star
+
+add_star(
+    star  = "MyStar",   # required — no spaces
+    dist  = 42.0,       # required — pc
+    temp  = 6500,       # required — K
+    rad   = 1.3,        # required — R_sun
+    logg  = 4.1,        # required — CGS
+    band  = "V",        # required — photometric band
+    apmag = 6.2,        # required — apparent magnitude
+    mass  = 1.2,        # optional — M_sun
+    spt   = "F5V",      # optional — spectral type
+    vsini = 15.0,       # optional — km/s
+    # all other fields default to nan
+)
+```
+
+Or from the command line:
+
+```bash
+python -m pyGrater.add_stars \
+  --star MyStar --dist 42.0 --temp 6500 --rad 1.3 --logg 4.1 \
+  --band V --apmag 6.2 --spt F5V
+```
+
+The function raises `ValueError` if the star name already exists.
+All unspecified optional columns (`mass`, `vsini`, `mdot`, `vw`, `tcoro`,
+`B0`, `r0`, `tilt`, `per`) default to `nan`.
+
+---
+
+## How to Add a New Grain Material
+
+> **Before registering a new material**, place its optical index file(s) in:
+> ```
+> data/optical_properties/
+> ```
+> The filenames you pass to `file_par`, `file_per1`, and `file_per2` are looked
+> up relative to that folder.
+
+Use the `add_material()` helper to append a new entry to
+`data/material_list.txt`:
+
+```python
+from pyGrater.add_materials import add_material
+
+# Minimal — single optical file for all three orientations
+add_material(
+    nickname = "my_dust",   # required — no spaces
+    Tsub     = 1700,        # required — K
+    density  = 3.5,         # required — g/cm³
+    file_par = "my_dust.txt",  # required; per1 & per2 default to this
+)
+
+# With separate orientation files and metadata
+add_material(
+    nickname   = "my_dust",
+    Tsub       = 1700,
+    density    = 3.5,
+    file_par   = "my_dust_par.txt",
+    file_per1  = "my_dust_per1.txt",
+    file_per2  = "my_dust_per2.txt",
+    wav_min    = 0.2,
+    wav_max    = 500.0,
+    full_name  = "My custom silicate",
+    formula    = "MgSiO3",
+    reference  = "Author et al. 2025",
+)
+```
+
+Or from the command line:
+
+```bash
+python -m pyGrater.add_materials \
+  --nickname my_dust --Tsub 1700 --density 3.5 \
+  --file_par my_dust.txt \
+  --full_name "My custom silicate" --formula MgSiO3
+```
+
+**Key behaviours:**
+- Required: `nickname`, `Tsub`, `density`, `file_par`
+- If `file_per1` / `file_per2` are omitted, all three orientations use `file_par`
+- Orientation weights default to `0.333333` each
+- Raises `ValueError` if the nickname already exists
+
 
 
 

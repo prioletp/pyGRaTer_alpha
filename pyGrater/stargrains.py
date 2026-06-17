@@ -309,7 +309,6 @@ class Star:
         """
         self.talk = kwargs.get('talk', True)
 
-        star_name = kwargs.get('star_name', None)
         # N_waves = kwargs.get('N_waves', 2000)
         bin_ratio = kwargs.get('bin_ratio', 20)
         
@@ -318,10 +317,14 @@ class Star:
         data_path = DataPathConfig.get_data_path()
         self.path_spectrum_data = str(data_path / 'star_data' / "NextGenSpectra")
 
-        self.star_name = star_name
-        self.star_properties_path = data_path / 'star_data' / "stars_main_properties.txt"
-        self.star_properties = self.load_star_properties()
-        
+        if 'star_name' in kwargs:
+            star_name = kwargs['star_name']
+            self.star_name = star_name
+            self.star_properties_path = data_path / 'star_data' / "stars_main_properties.txt"
+            self.star_properties = self.load_star_properties()
+        else:
+            self.star_properties = self.load_star_properties_from_kwargs(**kwargs)
+            
         if self.talk:
             print("="*60)
             print("CREATING STAR OBJECT")
@@ -394,6 +397,20 @@ class Star:
         self.period = (float(star_properties_dic['per'])*units.year).to(units.s)  # in s
         
         return star_properties_dic
+    
+    def load_star_properties_from_kwargs(self, **kwargs) :
+        """Load star properties from keyword arguments and create star dictionnary"""
+        
+        self.distance = float(kwargs['dist'])  # in pc
+        self.temp = float(kwargs['temp'])      # in K
+        self.radius = float(kwargs['rad'])    # in solar radius
+        self.logg = float(kwargs['logg'])      # in cgs
+        self.normband = kwargs['band']
+        self.apmag = float(kwargs['apmag'])
+        self.spectral_type = kwargs.get('spt', None)
+
+        return kwargs
+    
     def get_spectral_full(self, norm=True) : #,band,Normmag,waveRef,norm=True) :
         '''Find the closest spectra in NextGen
         Normalize it by the specified band and magnitude
