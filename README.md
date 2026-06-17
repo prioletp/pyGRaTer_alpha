@@ -1,18 +1,35 @@
+<div align="center">
+
 # pyGrater
 
-pyGrater is a Python package for debris disk modeling and radiative transfer of optically thin media.
+**Debris disk modeling and radiative transfer for optically thin media**
+
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+</div>
+
+---
+
+## Overview
+
+pyGrater is a Python package for computing grain temperatures, scattering/emission efficiencies, spectral energy distributions (SEDs), and synthetic images of debris disks around stars.
+
+**Key features:**
+- Mie theory grain efficiency calculations (Qabs, Qsca, Qpr)
+- Grain temperature equilibrium as a function of stellar type and distance
+- SED and image generation for optically thin disks
+- Support for a wide range of grain compositions and stellar spectra
+
+---
 
 ## Installation
 
-To install, run in the top directory (containing pyproject.toml):
-
 ```bash
+# Standard install
 pip install .
-```
 
-Or install in editable (developer) mode:
-
-```bash
+# Editable (developer) mode
 pip install -e .
 ```
 
@@ -20,244 +37,188 @@ pip install -e .
 
 ## Data Setup
 
-pyGrater requires an external data directory (optical properties, stellar catalogs, filters, etc.).
+pyGrater requires an external data directory containing optical properties, stellar catalogs, filter curves, and pre-computed efficiencies.
 
-Download the data from:
-https://osf.io/mqkyf/overview
+**Download the data:** https://osf.io/mqkyf/overview
 
-Then configure the data path using one of the following options.
+Then configure the data path with one of the following options:
 
-### Option 1: configure inside Python
+<details>
+<summary><b>Option 1 — Python</b></summary>
 
 ```python
 import pyGrater
 pyGrater.set_data_path("/path/to/downloaded/data")
 ```
+</details>
 
-### Option 2: environment variable
+<details>
+<summary><b>Option 2 — Environment variable</b></summary>
 
 ```bash
 export PYGRATER_DATA_PATH=/path/to/downloaded/data
 ```
+</details>
 
-### Option 3: command-line helper (only if installed via pip)
+<details>
+<summary><b>Option 3 — Command-line helper</b> (pip install only)</summary>
 
 ```bash
 pygrater-setup --data-path /path/to/downloaded/data
+pygrater-setup --show   # verify current config
+```
+</details>
+
+> The persistent config is stored in `~/.pygrater/config.json`.
+> If no data path is configured, pyGrater raises a `FileNotFoundError` with setup instructions.
+
+---
+
+## Quick Start
+
+```python
+import pyGrater
+
+# Load a grain and a star
+grain = pyGrater.Grain(composition="aC_ACAR")
+star  = pyGrater.Star(star_name="bPic")
+
+# Compute grain temperatures
+temp = pyGrater.Temperature(grain, star)
 ```
 
-Check current configuration:
+See the `examples/` folder for full Jupyter notebook tutorials.
 
-```bash
-pygrater-setup --show
-```
+---
 
-Notes:
+## Using Stars
 
-- The persistent config is stored in ~/.pygrater/config.json.
-- If no data path is configured, pyGrater raises a FileNotFoundError with setup instructions.
-
-
-## How to Use a Star
-
-### Option 1: load from the catalog
-
-The simplest way is to pass the star's name — pyGrater looks it up in
-`data/star_data/stars_main_properties.txt`:
+### Load from the catalog
 
 ```python
 from pyGrater import Star
 
 star = Star(star_name="bPic")
-print(star.temp, star.distance)
+print(star.temp, star.distance, star.lum)
 ```
 
-If the name does not match exactly, pyGrater raises `ValueError: Unknown star: <name>`.
+### Define a star inline (no catalog entry needed)
 
-### Option 2: define a star inline (no catalog entry needed)
+Pass properties directly as keyword arguments:
 
-You can create a `Star` object entirely from keyword arguments, without
-adding any row to the catalog.  The required kwargs are:
-
-| kwarg  | unit          | description                        |
-|--------|---------------|------------------------------------|
-| `dist` | pc            | distance to the star               |
-| `temp` | K             | effective temperature              |
-| `rad`  | R☉            | stellar radius                     |
-| `logg` | cgs           | surface gravity                    |
-| `band` | —             | photometric band for normalization |
-| `apmag`| mag           | apparent magnitude in that band    |
-| `spt`  | —             | spectral type *(optional)*         |
+| kwarg   | unit | required | description |
+|---------|------|:--------:|-------------|
+| `dist`  | pc   | ✓ | distance |
+| `temp`  | K    | ✓ | effective temperature |
+| `rad`   | R☉   | ✓ | stellar radius |
+| `logg`  | cgs  | ✓ | surface gravity |
+| `band`  | —    | ✓ | photometric band for normalisation |
+| `apmag` | mag  | ✓ | apparent magnitude in that band |
+| `spt`   | —    |   | spectral type *(optional)* |
 
 ```python
-from pyGrater import Star
-
-star = Star(
-    dist  = 19.3,    # pc
-    temp  = 8052,    # K
-    rad   = 1.8,     # R_sun
-    logg  = 4.1,     # cgs
-    band  = "V",
-    apmag = 3.86,    # mag
-    spt   = "A6V",   # optional
-)
-print(star.temp, star.lum)
+star = Star(dist=19.3, temp=8052, rad=1.8, logg=4.1, band="V", apmag=3.86, spt="A6V")
 ```
 
-This is useful for quick tests, one-off targets, or stars not yet in the catalog.
-
-### Adding a new star to the catalog (permanent)
-
-To make a star permanently available by name, use the `add_star()` helper:
+### Add a star to the catalog permanently
 
 ```python
 from pyGrater.add_stars import add_star
 
 add_star(
-    star  = "MyStar",   # required — no spaces
-    dist  = 42.0,       # required — pc
-    temp  = 6500,       # required — K
-    rad   = 1.3,        # required — R_sun
-    logg  = 4.1,        # required — CGS
-    band  = "V",        # required — photometric band
-    apmag = 6.2,        # required — apparent magnitude
-    mass  = 1.2,        # optional — M_sun
-    spt   = "F5V",      # optional — spectral type
-    vsini = 15.0,       # optional — km/s
-    # all other fields default to nan
+    star="MyStar", dist=42.0, temp=6500, rad=1.3, logg=4.1, band="V", apmag=6.2,
+    mass=1.2, spt="F5V", vsini=15.0,  # optional fields — all others default to nan
 )
 ```
 
-Or from the command line:
-
 ```bash
-python -m pyGrater.add_stars \
-  --star MyStar --dist 42.0 --temp 6500 --rad 1.3 --logg 4.1 \
-  --band V --apmag 6.2 --spt F5V
+# Or from the terminal:
+python -m pyGrater.add_stars --star MyStar --dist 42.0 --temp 6500 \
+  --rad 1.3 --logg 4.1 --band V --apmag 6.2 --spt F5V
 ```
 
-The function raises `ValueError` if the star name already exists.
-All unspecified optional columns (`mass`, `vsini`, `mdot`, `vw`, `tcoro`,
-`B0`, `r0`, `tilt`, `per`) default to `nan`.
+> Raises `ValueError` if the star name already exists in the catalog.
 
 ---
 
-## How to Add a New Grain Material
+## Adding Grain Materials
 
-> **Before registering a new material**, place its optical index file(s) in:
+> **Step 1 — copy your optical index file(s) into:**
 > ```
 > data/optical_properties/
 > ```
-> The filenames you pass to `file_par`, `file_per1`, and `file_per2` are looked
-> up relative to that folder.
+> The filenames passed to `file_par`, `file_per1`, `file_per2` are resolved relative to that folder.
 
-Use the `add_material()` helper to append a new entry to
-`data/material_list.txt`:
+**Step 2 — register the material:**
 
 ```python
 from pyGrater.add_materials import add_material
 
-# Minimal — single optical file for all three orientations
-add_material(
-    nickname = "my_dust",   # required — no spaces
-    Tsub     = 1700,        # required — K
-    density  = 3.5,         # required — g/cm³
-    file_par = "my_dust.txt",  # required; per1 & per2 default to this
-)
+# Single optical file for all orientations
+add_material(nickname="my_dust", Tsub=1700, density=3.5, file_par="my_dust.txt")
 
-# With separate orientation files and metadata
+# Separate files per orientation + metadata
 add_material(
-    nickname   = "my_dust",
-    Tsub       = 1700,
-    density    = 3.5,
-    file_par   = "my_dust_par.txt",
-    file_per1  = "my_dust_per1.txt",
-    file_per2  = "my_dust_per2.txt",
-    wav_min    = 0.2,
-    wav_max    = 500.0,
-    full_name  = "My custom silicate",
-    formula    = "MgSiO3",
-    reference  = "Author et al. 2025",
+    nickname="my_dust", Tsub=1700, density=3.5,
+    file_par="my_dust_par.txt", file_per1="my_dust_per1.txt", file_per2="my_dust_per2.txt",
+    wav_min=0.2, wav_max=500.0, full_name="My custom silicate",
+    formula="MgSiO3", reference="Author et al. 2025",
 )
 ```
-
-Or from the command line:
 
 ```bash
-python -m pyGrater.add_materials \
-  --nickname my_dust --Tsub 1700 --density 3.5 \
-  --file_par my_dust.txt \
-  --full_name "My custom silicate" --formula MgSiO3
+# Or from the terminal:
+python -m pyGrater.add_materials --nickname my_dust --Tsub 1700 \
+  --density 3.5 --file_par my_dust.txt --formula MgSiO3
 ```
 
-**Key behaviours:**
-- Required: `nickname`, `Tsub`, `density`, `file_par`
-- If `file_per1` / `file_per2` are omitted, all three orientations use `file_par`
-- Orientation weights default to `0.333333` each
-- Raises `ValueError` if the nickname already exists
+| field | required | default |
+|-------|:--------:|---------|
+| `nickname`, `Tsub`, `density`, `file_par` | ✓ | — |
+| `file_per1`, `file_per2` | | same as `file_par` |
+| `weight_par/per1/per2` | | `0.333333` each |
+| all metadata fields | | empty / `nan` |
 
+---
 
+## Notebooks
 
-
-## Examples
-
-Notebook examples are available in the examples directory, including:
-
-- grain temperatures,
-- flux profiles,
-- SED and image generation.
+| # | Topic |
+|---|-------|
+| 1 | Calculating grain efficiencies Q |
+| 2 | Working with stars |
+| 3 | Grain temperatures |
+| 4 | Flux profiles |
+| 5a | Making SEDs |
+| 5b | Making images |
+| 6 | Phase functions |
+| 7 | Adding new stars and materials |
 
 ---
 
 ## Logging
 
-Every `print()` call made anywhere in pyGrater is automatically mirrored to a
-timestamped log file whenever the package is imported.
+Every `print()` call in pyGrater is automatically mirrored to a timestamped log file when the package is imported.
 
-### Default log location
-
-Log files are written to a `logs/` folder **inside the current working
-directory** at the moment `import pyGrater` is executed:
-
-```
-<cwd>/logs/pyGrater_YYYYMMDD_HHMMSS.log
-```
-
-So if you launch Python from `/home/user/my_project/`, the log appears at:
-
-```
-/home/user/my_project/logs/pyGrater_20260616_142301.log
-```
-
-### Changing the log directory
-
-Pass a custom path to `redirect_print_to_log()` **before** (or right after)
-importing pyGrater:
+**Default location:** `<cwd>/logs/pyGrater_YYYYMMDD_HHMMSS.log`
 
 ```python
+# Change the log directory
 import pyGrater
 pyGrater.redirect_print_to_log("/path/to/my/logs")
-```
 
-If pyGrater has already been imported (e.g. in a Jupyter notebook that was not
-restarted), call it again with the new path — the previous log file is closed
-and a fresh one is opened at the new location.
-
-### Disabling log file output
-
-To suppress file logging for the current session, restore the original stdout:
-
-```python
+# Disable file logging
 import sys
-sys.stdout = sys.stdout._original   # unwrap the TeeStream
+sys.stdout = sys.stdout._original
 ```
 
+---
 
 ## Troubleshooting
 
-- FileNotFoundError for data path:
-  configure PYGRATER_DATA_PATH or run pygrater-setup --data-path.
-- Unknown star name:
-  check spelling and ensure the row exists in stars_main_properties.txt.
-- Slow first run for a composition:
-  grain efficiency files may need to be computed once before reuse.
+| Symptom | Fix |
+|---------|-----|
+| `FileNotFoundError` for data path | Run `pygrater-setup --data-path /path` or set `PYGRATER_DATA_PATH` |
+| `ValueError: Unknown star` | Check spelling; ensure the name exists in `stars_main_properties.txt` |
+| Slow first run for a composition | Efficiency files are computed once and cached — subsequent runs are fast |
+
