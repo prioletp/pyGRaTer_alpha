@@ -2,7 +2,7 @@
 
 This repository has been superseded by the public `pyGrater` repository:
 
-<https://github.com/prioletp/pyGRaTer>
+<https://github.com/prioletp/pyGrater>
 
 Please use the new repository for installation, issues, updates, and future
 development.
